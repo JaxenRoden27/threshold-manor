@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
 import { useGameStore } from "@/store/gameStore";
+import { useGameActions } from "@/hooks/useGameActions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,21 +12,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { DiceRollPanel } from "@/components/DiceRollPanel";
+import { Die } from "@/components/Die";
 
 export function CardModal() {
-  const { pendingCard, resolvePendingCard, dismissPendingCard, players, activePlayerIndex } =
-    useGameStore();
+  const { pendingCard, players, activePlayerIndex, clueCount } = useGameStore();
+  const { rollStatCheck, rollThreatDie, dismissPendingCard, resolveItemCard, canAct } =
+    useGameActions();
+  const canRoll = canAct();
 
   const open = Boolean(pendingCard);
   const card = pendingCard?.card;
   const resolved = pendingCard?.resolved ?? false;
   const active = players[activePlayerIndex];
-
-  useEffect(() => {
-    if (pendingCard && !pendingCard.resolved) {
-      resolvePendingCard();
-    }
-  }, [pendingCard, resolvePendingCard]);
 
   if (!card) return null;
 
@@ -35,6 +33,9 @@ export function CardModal() {
     item: "bg-sky-900 text-sky-200",
     clue: "bg-rose-900 text-rose-200",
   };
+
+  const statValue =
+    card.stat && active ? active[card.stat] : 0;
 
   return (
     <Dialog open={open} onOpenChange={() => resolved && dismissPendingCard()}>
@@ -49,29 +50,80 @@ export function CardModal() {
           </DialogDescription>
         </DialogHeader>
 
-        {resolved && (
-          <div className="space-y-2 text-sm">
-            {card.type === "event" && card.stat && (
-              <p className="text-stone-300">
-                {active?.name} tests <strong>{card.stat}</strong>
-                {pendingCard?.roll !== undefined && (
-                  <> — rolled <strong>{pendingCard.roll}</strong> vs {card.difficulty}</>
-                )}
-              </p>
-            )}
+        {card.type === "item" && !resolved && (
+          <div className="text-sm text-stone-300">
+            <p>{card.successText}</p>
+            <Button
+              className="mt-3 w-full bg-amber-700 hover:bg-amber-600"
+              onClick={resolveItemCard}
+            >
+              Take Item
+            </Button>
+          </div>
+        )}
+
+        {card.type === "event" && pendingCard?.rollPhase === "await-stat" && (
+          <DiceRollPanel
+            config={{
+              diceCount: 1,
+              modifier: statValue,
+              modifierLabel: card.stat ?? undefined,
+              target: card.difficulty,
+              targetLabel: "difficulty",
+              title: `${active?.name} tests ${card.stat}`,
+              description: "Roll the die and add your stat to beat the difficulty.",
+            }}
+            canRoll={canRoll}
+            waitingLabel={`Waiting for ${active?.name} to roll…`}
+            onComplete={(dice) => rollStatCheck(dice)}
+          />
+        )}
+
+        {card.type === "event" && resolved && pendingCard?.statDice && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-center gap-3">
+              <Die value={pendingCard.statDice[0]} size="md" />
+              {card.stat && (
+                <span className="text-sm text-stone-400">
+                  + {statValue} {card.stat}
+                </span>
+              )}
+            </div>
             <p
               className={
-                pendingCard?.success ? "text-emerald-400" : "text-rose-400"
+                pendingCard.success ? "text-emerald-400" : "text-rose-400"
               }
             >
-              {pendingCard?.success ? card.successText : card.failureText}
+              {pendingCard.success ? card.successText : card.failureText}
             </p>
-            {card.type === "clue" && (
-              <p className="text-amber-300 text-xs">
-                After each Clue, a threat die is rolled. If it falls below the
-                Clue count—or you uncover 3 Clues—the Crisis begins.
-              </p>
-            )}
+          </div>
+        )}
+
+        {card.type === "clue" && pendingCard?.rollPhase === "await-threat" && (
+          <DiceRollPanel
+            config={{
+              diceCount: 1,
+              crisisBelow: clueCount + 1,
+              title: "Threat Die",
+              description:
+                "Roll the threat die. If the result is below the new Clue count—or you reach 3 Clues—the Crisis begins.",
+              variant: "threat",
+            }}
+            canRoll={canRoll}
+            waitingLabel={`Waiting for ${active?.name} to roll the threat die…`}
+            onComplete={(dice) => rollThreatDie(dice)}
+          />
+        )}
+
+        {card.type === "clue" && resolved && pendingCard?.threatDice && (
+          <div className="space-y-3">
+            <div className="flex justify-center">
+              <Die value={pendingCard.threatDice[0]} size="md" variant="threat" />
+            </div>
+            <p className="text-amber-300 text-xs">
+              Threat roll complete. Check the journal for whether the Crisis
+              awakened.
+            </p>
           </div>
         )}
 

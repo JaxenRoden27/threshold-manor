@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import {
+  applyStatRoll,
+  applyThreatRoll,
   createInitialState,
   dismissCard,
   endTurn,
   movePlayer,
-  resolveCard,
+  resolveItemCard,
   setPlayerCount,
   startGame,
 } from "@/game/gameEngine";
@@ -15,7 +17,9 @@ interface GameStore extends GameState {
   setPlayerCount: (count: number) => void;
   startGame: (selectedIds: string[]) => void;
   move: (direction: Direction) => void;
-  resolvePendingCard: () => void;
+  resolveItemCard: () => void;
+  rollStatCheck: (dice: number[]) => void;
+  rollThreatDie: (dice: number[]) => void;
   dismissPendingCard: () => void;
   endTurn: () => void;
   rotatePuzzleSigil: (index: number) => void;
@@ -31,10 +35,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   move: (direction) => set((s) => movePlayer(s, direction)),
 
-  resolvePendingCard: () => {
+  resolveItemCard: () => {
     const s = get();
     if (!s.pendingCard || s.pendingCard.resolved) return;
-    set(resolveCard(s, s.pendingCard));
+    if (s.pendingCard.card.type !== "item") return;
+    set(resolveItemCard(s, s.pendingCard));
+  },
+
+  rollStatCheck: (dice) => {
+    const s = get();
+    if (!s.pendingCard || s.pendingCard.rollPhase !== "await-stat") return;
+    set(applyStatRoll(s, s.pendingCard, dice));
+  },
+
+  rollThreatDie: (dice) => {
+    const s = get();
+    if (!s.pendingCard || s.pendingCard.rollPhase !== "await-threat") return;
+    set(applyThreatRoll(s, s.pendingCard, dice));
   },
 
   dismissPendingCard: () => set((s) => dismissCard(s)),

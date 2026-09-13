@@ -61,10 +61,19 @@ export interface Card {
   itemReward?: string;
 }
 
+export type CardRollPhase =
+  | "none"
+  | "await-stat"
+  | "await-threat"
+  | "complete";
+
 export interface PendingCard {
   card: Card;
   tileId: string;
   resolved: boolean;
+  rollPhase: CardRollPhase;
+  statDice?: number[];
+  threatDice?: number[];
   roll?: number;
   success?: boolean;
 }
