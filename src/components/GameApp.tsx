@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 
 export function GameApp() {
   const { phase, resetGame } = useGameStore();
-  const { mode, roomCode, leaveRoom } = useMultiplayerStore();
+  const { mode, roomCode, leaveRoom, ensureHostAvailable } = useMultiplayerStore();
 
   useEffect(() => {
     if (process.env.NODE_ENV === "development") {
@@ -31,15 +31,27 @@ export function GameApp() {
         };
     }
 
-    const onUnload = () => {
+    const onPageHide = (event: PageTransitionEvent) => {
+      if (event.persisted) return;
       const { mode, status } = useMultiplayerStore.getState();
       if (mode === "multiplayer" && status !== "idle") {
         useMultiplayerStore.getState().leaveRoom();
       }
     };
-    window.addEventListener("beforeunload", onUnload);
-    return () => window.removeEventListener("beforeunload", onUnload);
-  }, []);
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        ensureHostAvailable();
+      }
+    };
+
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [ensureHostAvailable]);
 
   const handleExit = () => {
     if (mode === "multiplayer") leaveRoom();

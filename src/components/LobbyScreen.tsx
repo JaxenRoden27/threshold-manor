@@ -229,7 +229,8 @@ export function LobbyScreen() {
             <CardHeader>
               <CardTitle className="text-amber-100">Room Code</CardTitle>
               <CardDescription>
-                Share this code so others can join from the play link.
+                Share this code so others can join from the play link. Keep this
+                screen open until everyone has joined.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col items-center gap-2">
@@ -237,8 +238,12 @@ export function LobbyScreen() {
                 {roomCode}
               </p>
               <p className="text-xs text-stone-500">
-                {status === "connected" ? "Connected" : status} ·{" "}
-                {lobby.members.length}/{lobby.maxPlayers} players
+                {status === "connected"
+                  ? "Connected"
+                  : status === "connecting"
+                    ? statusMessage ?? "Connecting…"
+                    : status}{" "}
+                · {lobby.members.length}/{lobby.maxPlayers} players
               </p>
               <Button variant="ghost" size="sm" onClick={leaveRoom}>
                 Leave Room

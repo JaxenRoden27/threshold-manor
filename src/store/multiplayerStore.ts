@@ -30,6 +30,7 @@ interface MultiplayerStore {
   setReady: (ready: boolean) => void;
   startMultiplayer: () => void;
   leaveRoom: () => void;
+  ensureHostAvailable: () => void;
   dispatchAction: (action: GameAction) => void;
   isMyTurn: () => boolean;
   canLocalAct: () => boolean;
@@ -240,6 +241,10 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
       lobby: null,
     });
     useGameStore.getState().resetGame();
+  },
+
+  ensureHostAvailable: () => {
+    session?.ensureHostAvailable();
   },
 
   dispatchAction: (action) => {

@@ -6,6 +6,11 @@ import { generateRoomCode, peerIdForRoom } from "./roomCode";
 type PeerConstructor = typeof import("peerjs").default;
 
 const PEER_OPTIONS = {
+  host: "0.peerjs.com",
+  port: 443,
+  path: "/",
+  secure: true,
+  key: "peerjs",
   debug: 0,
   config: {
     iceServers: [
@@ -19,8 +24,11 @@ const PEER_OPTIONS = {
   },
 };
 
-const JOIN_TIMEOUT_MS = 15000;
+const JOIN_ATTEMPTS = 5;
+const JOIN_ATTEMPT_DELAY_MS = 2500;
+const JOIN_TIMEOUT_MS = 12000;
 const LOBBY_SYNC_TIMEOUT_MS = 10000;
+const HOST_KEEPALIVE_MS = 4000;
 
 let PeerClass: PeerConstructor | null = null;
 
@@ -30,6 +38,10 @@ async function getPeerClass(): Promise<PeerConstructor> {
     PeerClass = mod.default;
   }
   return PeerClass;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export interface SessionCallbacks {
@@ -50,6 +62,8 @@ export class MultiplayerSession {
   private isHost = false;
   private joinLobbyResolve: ((lobby: LobbyState) => void) | null = null;
   private joinLobbyReject: ((error: Error) => void) | null = null;
+  private hostKeepaliveTimer: ReturnType<typeof setInterval> | null = null;
+  private hostReregistering = false;
 
   constructor(callbacks: SessionCallbacks) {
     this.callbacks = callbacks;
@@ -90,6 +104,7 @@ export class MultiplayerSession {
           maxPlayers,
           started: false,
         };
+        this.startHostKeepalive();
         this.broadcastLobby();
         this.callbacks.onStatus("connected");
         return code;
@@ -107,109 +122,40 @@ export class MultiplayerSession {
     await getPeerClass();
     this.isHost = false;
     this.lobby = null;
+    this.stopHostKeepalive();
     this.callbacks.onStatus("connecting");
 
-    await this.initPeer();
-    const hostId = peerIdForRoom(code);
+    let lastError: Error | null = null;
 
-    return new Promise((resolve, reject) => {
-      const peer = this.peer!;
-      let settled = false;
+    for (let attempt = 0; attempt < JOIN_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        this.callbacks.onStatus(
+          "connecting",
+          `Looking for room… (attempt ${attempt + 1}/${JOIN_ATTEMPTS})`
+        );
+        await delay(JOIN_ATTEMPT_DELAY_MS);
+      }
 
-      const cleanup = () => {
-        clearTimeout(joinTimeout);
-        clearTimeout(lobbyTimeout);
-        peer.off("error", onPeerError);
-        this.joinLobbyResolve = null;
-        this.joinLobbyReject = null;
-      };
+      try {
+        await this.attemptJoin(code);
+        return;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error("Join failed");
+        this.teardownPeer();
+      }
+    }
 
-      const finish = (fn: () => void) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        fn();
-      };
+    this.callbacks.onStatus(
+      "error",
+      "Could not find that room. Ask the host to keep the game open and try again."
+    );
+    throw lastError ?? new Error("Join failed");
+  }
 
-      const joinTimeout = setTimeout(() => {
-        finish(() => {
-          this.teardownPeer();
-          this.callbacks.onStatus(
-            "error",
-            "Could not find that room. Check the code and try again."
-          );
-          reject(new Error("Join timeout"));
-        });
-      }, JOIN_TIMEOUT_MS);
-
-      const onPeerError = (err: PeerError<string>) => {
-        if (err.type === "peer-unavailable") {
-          finish(() => {
-            this.teardownPeer();
-            this.callbacks.onStatus(
-              "error",
-              "Could not find that room. Check the code and try again."
-            );
-            reject(new Error("Peer unavailable"));
-          });
-        }
-      };
-
-      peer.on("error", onPeerError);
-
-      const conn = peer.connect(hostId, { reliable: true });
-      let lobbyTimeout: ReturnType<typeof setTimeout>;
-
-      conn.on("open", () => {
-        clearTimeout(joinTimeout);
-        this.connections.set(hostId, conn);
-        this.wireConnection(conn);
-        this.send(conn, { type: "join", peerId: this.localPeerId });
-
-        lobbyTimeout = setTimeout(() => {
-          finish(() => {
-            this.teardownPeer();
-            this.callbacks.onStatus(
-              "error",
-              "Connected but could not sync with the host. Try again."
-            );
-            reject(new Error("Lobby timeout"));
-          });
-        }, LOBBY_SYNC_TIMEOUT_MS);
-
-        this.joinLobbyResolve = (lobby) => {
-          this.lobby = lobby;
-          finish(() => {
-            this.callbacks.onStatus("connected");
-            resolve();
-          });
-        };
-        this.joinLobbyReject = (error) => {
-          finish(() => {
-            this.teardownPeer();
-            reject(error);
-          });
-        };
-      });
-
-      conn.on("error", () => {
-        finish(() => {
-          this.teardownPeer();
-          this.callbacks.onStatus("error", "Connection failed. Try again.");
-          reject(new Error("Connection error"));
-        });
-      });
-
-      conn.on("close", () => {
-        if (!settled) {
-          finish(() => {
-            this.teardownPeer();
-            this.callbacks.onStatus("error", "Connection closed before joining.");
-            reject(new Error("Connection closed"));
-          });
-        }
-      });
-    });
+  ensureHostAvailable() {
+    if (this.isHost && this.lobby && !this.lobby.started) {
+      void this.ensureHostRegistered();
+    }
   }
 
   abortJoin() {
@@ -266,6 +212,7 @@ export class MultiplayerSession {
       if (hostConn) this.send(hostConn, { type: "start-game" });
       return;
     }
+    this.stopHostKeepalive();
   }
 
   broadcastGameState(state: GameState) {
@@ -286,6 +233,7 @@ export class MultiplayerSession {
   }
 
   destroy() {
+    this.stopHostKeepalive();
     this.broadcast({ type: "host-left" });
     for (const conn of this.connections.values()) conn.close();
     this.connections.clear();
@@ -295,6 +243,78 @@ export class MultiplayerSession {
     this.joinLobbyResolve = null;
     this.joinLobbyReject = null;
     this.callbacks.onStatus("idle");
+  }
+
+  private async attemptJoin(code: string): Promise<void> {
+    await this.initPeer();
+    const hostId = peerIdForRoom(code);
+
+    return new Promise((resolve, reject) => {
+      const peer = this.peer!;
+      let settled = false;
+
+      const cleanup = () => {
+        clearTimeout(joinTimeout);
+        clearTimeout(lobbyTimeout);
+        peer.off("error", onPeerError);
+        this.joinLobbyResolve = null;
+        this.joinLobbyReject = null;
+      };
+
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        fn();
+      };
+
+      const joinTimeout = setTimeout(() => {
+        finish(() => reject(new Error("Join timeout")));
+      }, JOIN_TIMEOUT_MS);
+
+      const onPeerError = (err: PeerError<string>) => {
+        if (err.type === "peer-unavailable") {
+          finish(() => reject(new Error("Peer unavailable")));
+        }
+      };
+
+      peer.on("error", onPeerError);
+
+      const conn = peer.connect(hostId, { reliable: true });
+      let lobbyTimeout: ReturnType<typeof setTimeout>;
+
+      conn.on("open", () => {
+        clearTimeout(joinTimeout);
+        this.connections.set(hostId, conn);
+        this.wireConnection(conn);
+        this.send(conn, { type: "join", peerId: this.localPeerId });
+
+        lobbyTimeout = setTimeout(() => {
+          finish(() => reject(new Error("Lobby timeout")));
+        }, LOBBY_SYNC_TIMEOUT_MS);
+
+        this.joinLobbyResolve = (lobby) => {
+          this.lobby = lobby;
+          finish(() => {
+            this.callbacks.onStatus("connected");
+            resolve();
+          });
+        };
+        this.joinLobbyReject = (error) => {
+          finish(() => reject(error));
+        };
+      });
+
+      conn.on("error", () => {
+        finish(() => reject(new Error("Connection error")));
+      });
+
+      conn.on("close", () => {
+        if (!settled) {
+          finish(() => reject(new Error("Connection closed")));
+        }
+      });
+    });
   }
 
   private async initPeer(id?: string): Promise<void> {
@@ -313,12 +333,6 @@ export class MultiplayerSession {
           peer.on("connection", (conn) => this.handleInboundConnection(conn));
           peer.on("disconnected", () => this.handleHostDisconnected());
           peer.on("close", () => this.handleHostClosed());
-          peer.on("open", () => {
-            if (this.isHost && this.lobby) {
-              this.callbacks.onStatus("connected");
-              this.broadcastLobby();
-            }
-          });
         }
 
         resolve();
@@ -332,6 +346,81 @@ export class MultiplayerSession {
       peer.on("open", onOpen);
       peer.on("error", onError);
     });
+  }
+
+  private startHostKeepalive() {
+    this.stopHostKeepalive();
+    this.hostKeepaliveTimer = setInterval(() => {
+      void this.ensureHostRegistered();
+    }, HOST_KEEPALIVE_MS);
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", this.onVisibilityChange);
+    }
+  }
+
+  private stopHostKeepalive() {
+    if (this.hostKeepaliveTimer) {
+      clearInterval(this.hostKeepaliveTimer);
+      this.hostKeepaliveTimer = null;
+    }
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.onVisibilityChange);
+    }
+  }
+
+  private onVisibilityChange = () => {
+    if (document.visibilityState === "visible") {
+      this.ensureHostAvailable();
+    }
+  };
+
+  private async ensureHostRegistered(): Promise<void> {
+    if (!this.isHost || !this.lobby || this.lobby.started || this.hostReregistering) {
+      return;
+    }
+
+    const expectedId = peerIdForRoom(this.lobby.roomCode);
+    const needsReregister =
+      !this.peer ||
+      this.peer.destroyed ||
+      this.peer.disconnected ||
+      !this.peer.open ||
+      this.localPeerId !== expectedId;
+
+    if (!needsReregister) return;
+
+    this.hostReregistering = true;
+    try {
+      const hadGuests = this.connections.size > 0;
+      if (hadGuests) {
+        try {
+          this.peer?.reconnect();
+          await delay(1500);
+          if (this.peer?.open && !this.peer.disconnected) {
+            this.callbacks.onStatus("connected");
+            return;
+          }
+        } catch {
+          // Fall through to full re-register.
+        }
+      }
+
+      const guestConnections = [...this.connections.values()];
+      for (const conn of guestConnections) conn.close();
+      this.connections.clear();
+
+      await this.initPeer(expectedId);
+      this.callbacks.onStatus("connected");
+      this.broadcastLobby();
+    } catch {
+      this.callbacks.onStatus(
+        "error",
+        "Room connection lost. Leave and create a new room."
+      );
+    } finally {
+      this.hostReregistering = false;
+    }
   }
 
   private handleInboundConnection(conn: DataConnection) {
@@ -361,7 +450,7 @@ export class MultiplayerSession {
   private handleHostDisconnected() {
     if (!this.isHost || !this.peer || this.peer.destroyed) return;
     this.callbacks.onStatus("connecting", "Reconnecting room…");
-    this.peer.reconnect();
+    void this.ensureHostRegistered();
   }
 
   private handleHostClosed() {
