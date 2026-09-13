@@ -67,7 +67,15 @@ Choose **Local Play** for hot-seat mode on one screen — no room code needed.
 
 Static export — no API routes. The workflow in `.github/workflows/deploy-pages.yml` deploys the Cloudflare Worker signal server, builds with `NEXT_PUBLIC_BASE_PATH=/threshold-manor`, and publishes the `out/` folder.
 
-A Render blueprint (`render.yaml`) is also included for an alternate Node signal server.
+### Production signal server (Render)
+
+Multiplayer requires a small WebSocket server. Deploy it once on Render (free tier):
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/JaxenRoden27/threshold-manor)
+
+After deploy, set the repository variable `SIGNAL_HOST` to `threshold-manor-signal.onrender.com` (Settings → Secrets and variables → Actions → Variables), then re-run the **Deploy to GitHub Pages** workflow.
+
+A `render.yaml` blueprint is included at the repo root.
 
 ```bash
 # One-time publish (requires GH_TOKEN or gh auth login)
