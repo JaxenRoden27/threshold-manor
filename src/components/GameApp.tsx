@@ -3,15 +3,18 @@
 import { useEffect } from "react";
 import { createPuzzleState } from "@/game/puzzleEngine";
 import { useGameStore } from "@/store/gameStore";
-import { CharacterSelect } from "./CharacterSelect";
+import { useMultiplayerStore } from "@/store/multiplayerStore";
+import { LobbyScreen } from "./LobbyScreen";
 import { GameBoard } from "./GameBoard";
 import { GameSidebar } from "./GameSidebar";
 import { CardModal } from "./CardModal";
 import { CrisisOverlay } from "./CrisisOverlay";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 export function GameApp() {
   const { phase, resetGame } = useGameStore();
+  const { mode, roomCode, leaveRoom } = useMultiplayerStore();
 
   useEffect(() => {
     if (process.env.NODE_ENV === "development") {
@@ -29,10 +32,15 @@ export function GameApp() {
     }
   }, []);
 
+  const handleExit = () => {
+    if (mode === "multiplayer") leaveRoom();
+    else resetGame();
+  };
+
   if (phase === "setup") {
     return (
       <main className="min-h-screen bg-gradient-to-b from-stone-950 via-stone-900 to-black">
-        <CharacterSelect />
+        <LobbyScreen />
       </main>
     );
   }
@@ -41,15 +49,24 @@ export function GameApp() {
     <main className="flex min-h-screen flex-col bg-gradient-to-b from-stone-950 via-stone-900 to-black">
       <header className="flex items-center justify-between border-b border-stone-800 px-4 py-3">
         <div>
-          <h1 className="text-lg font-bold text-amber-100 md:text-xl">
-            Threshold Manor
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold text-amber-100 md:text-xl">
+              Threshold Manor
+            </h1>
+            {mode === "multiplayer" && roomCode && (
+              <Badge variant="outline" className="font-mono tracking-widest">
+                {roomCode}
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-stone-500">
-            Explore • Draw cards • Survive the Crisis
+            {mode === "multiplayer"
+              ? "Online co-op · shared mansion"
+              : "Explore • Draw cards • Survive the Crisis"}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={resetGame}>
-          New Game
+        <Button variant="ghost" size="sm" onClick={handleExit}>
+          Leave Game
         </Button>
       </header>
 

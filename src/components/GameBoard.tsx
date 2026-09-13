@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useGameStore } from "@/store/gameStore";
+import { useGameActions } from "@/hooks/useGameActions";
 import type { Direction, Player, Tile } from "@/game/types";
 import { DIRECTION_DELTA } from "@/game/tileData";
 import { Button } from "@/components/ui/button";
@@ -22,8 +23,9 @@ const DOOR_OFFSETS: Record<Direction, string> = {
 };
 
 export function GameBoard() {
-  const { tiles, players, activePlayerIndex, move, phase, pendingCard } =
+  const { tiles, players, activePlayerIndex, phase, pendingCard } =
     useGameStore();
+  const { move, canAct } = useGameActions();
 
   const bounds = useMemo(() => {
     const xs = tiles.map((t) => t.x);
@@ -37,7 +39,8 @@ export function GameBoard() {
   }, [tiles]);
 
   const active = players[activePlayerIndex];
-  const canMove = phase === "exploration" && !pendingCard && active?.ap > 0;
+  const canMove =
+    phase === "exploration" && !pendingCard && active?.ap > 0 && canAct();
 
   const unexploredDoors = useMemo(() => {
     const doors: { tile: Tile; direction: Direction }[] = [];

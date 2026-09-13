@@ -1,6 +1,8 @@
 "use client";
 
 import { useGameStore } from "@/store/gameStore";
+import { useGameActions } from "@/hooks/useGameActions";
+import { useMultiplayerStore } from "@/store/multiplayerStore";
 import { SIGIL_SYMBOLS } from "@/game/puzzleEngine";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,14 +15,10 @@ import {
 import { Progress } from "@/components/ui/progress";
 
 export function CrisisOverlay() {
-  const {
-    phase,
-    puzzle,
-    rotatePuzzleSigil,
-    players,
-    activePlayerIndex,
-    resetGame,
-  } = useGameStore();
+  const { phase, puzzle, players, activePlayerIndex, resetGame } =
+    useGameStore();
+  const { rotatePuzzleSigil, canAct } = useGameActions();
+  const { mode, leaveRoom } = useMultiplayerStore();
 
   if (phase === "exploration" || phase === "setup") return null;
 
@@ -47,7 +45,10 @@ export function CrisisOverlay() {
           <CardContent>
             <Button
               className="bg-amber-700 hover:bg-amber-600"
-              onClick={resetGame}
+              onClick={() => {
+                if (mode === "multiplayer") leaveRoom();
+                else resetGame();
+              }}
             >
               Play Again
             </Button>
@@ -113,7 +114,7 @@ export function CrisisOverlay() {
                 <button
                   key={`s-${i}`}
                   type="button"
-                  disabled={(active?.ap ?? 0) <= 0}
+                  disabled={(active?.ap ?? 0) <= 0 || !canAct()}
                   onClick={() => rotatePuzzleSigil(i)}
                   className="flex h-14 w-14 items-center justify-center rounded-lg border-2 border-rose-600 bg-rose-950/50 text-2xl text-rose-100 transition hover:border-amber-500 hover:bg-rose-900/60 disabled:opacity-40"
                 >

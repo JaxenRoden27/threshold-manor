@@ -20,6 +20,7 @@ export function CardModal() {
   const { rollStatCheck, rollThreatDie, dismissPendingCard, resolveItemCard, canAct } =
     useGameActions();
   const canRoll = canAct();
+  const canContinue = canAct();
 
   const open = Boolean(pendingCard);
   const card = pendingCard?.card;
@@ -130,7 +131,7 @@ export function CardModal() {
         <DialogFooter>
           <Button
             className="bg-amber-700 hover:bg-amber-600"
-            disabled={!resolved}
+            disabled={!resolved || !canContinue}
             onClick={dismissPendingCard}
           >
             Continue

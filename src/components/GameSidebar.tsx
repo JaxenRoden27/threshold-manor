@@ -1,6 +1,8 @@
 "use client";
 
 import { useGameStore } from "@/store/gameStore";
+import { useGameActions } from "@/hooks/useGameActions";
+import { useMultiplayerStore } from "@/store/multiplayerStore";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,11 +23,13 @@ export function GameSidebar() {
     clueCount,
     threatLevel,
     log,
-    endTurn,
     pendingCard,
   } = useGameStore();
+  const { endTurn, canAct } = useGameActions();
+  const { mode, localPeerId, isMyTurn } = useMultiplayerStore();
 
   const active = players[activePlayerIndex];
+  const isMyActiveTurn = mode === "local" || isMyTurn();
 
   return (
     <aside className="flex h-full flex-col gap-3">
@@ -113,8 +117,21 @@ export function GameSidebar() {
         </CardContent>
       </Card>
 
+      {mode === "multiplayer" && localPeerId && (
+        <p className="text-center text-xs text-stone-500">
+          {isMyActiveTurn
+            ? "It's your turn."
+            : `Waiting for ${active?.name ?? "active player"}…`}
+        </p>
+      )}
+
       {phase === "exploration" && !pendingCard && (
-        <Button variant="outline" onClick={endTurn} className="w-full">
+        <Button
+          variant="outline"
+          onClick={endTurn}
+          className="w-full"
+          disabled={!canAct()}
+        >
           End Turn
         </Button>
       )}

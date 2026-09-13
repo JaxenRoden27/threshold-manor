@@ -128,11 +128,13 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
     set({ mode: "multiplayer", status: "connecting", statusMessage: null });
     try {
       const code = await session!.createRoom(4);
+      const lobby = session!.getLobby();
       set({
         roomCode: code,
         isHost: true,
         localPeerId: session!.getLocalPeerId(),
         status: "connected",
+        lobby,
       });
       return code;
     } catch {
