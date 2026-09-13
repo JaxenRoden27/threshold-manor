@@ -68,7 +68,10 @@ export function LobbyScreen() {
     });
   };
 
-  const inMultiplayerLobby = mode === "multiplayer" && lobby && !lobby.started;
+  const inMultiplayerLobby =
+    mode === "multiplayer" && lobby && !lobby.started;
+  const waitingForLobby =
+    mode === "multiplayer" && status === "connected" && !lobby;
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 md:p-8">
@@ -208,6 +211,14 @@ export function LobbyScreen() {
             {statusMessage && (
               <p className="text-sm text-rose-400">{statusMessage}</p>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {waitingForLobby && (
+        <Card className="border-stone-700 bg-stone-900/80">
+          <CardContent className="py-8 text-center text-stone-400">
+            Syncing with the host…
           </CardContent>
         </Card>
       )}
