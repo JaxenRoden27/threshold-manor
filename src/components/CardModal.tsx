@@ -56,6 +56,7 @@ export function CardModal() {
             <p>{card.successText}</p>
             <Button
               className="mt-3 w-full bg-amber-700 hover:bg-amber-600"
+              disabled={!canContinue}
               onClick={resolveItemCard}
             >
               Take Item
