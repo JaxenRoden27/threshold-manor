@@ -30,6 +30,15 @@ export function GameApp() {
           });
         };
     }
+
+    const onUnload = () => {
+      const { mode, status } = useMultiplayerStore.getState();
+      if (mode === "multiplayer" && status !== "idle") {
+        useMultiplayerStore.getState().leaveRoom();
+      }
+    };
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
   }, []);
 
   const handleExit = () => {

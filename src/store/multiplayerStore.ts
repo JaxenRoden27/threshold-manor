@@ -150,18 +150,31 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
       return false;
     }
     ensureSession();
-    set({ mode: "multiplayer", status: "connecting", statusMessage: null });
+    set({ mode: "multiplayer", status: "connecting", statusMessage: null, lobby: null });
     try {
       await session!.joinRoom(normalized);
+      const lobby = session!.getLobby();
       set({
         roomCode: normalized,
         isHost: false,
         localPeerId: session!.getLocalPeerId(),
         status: "connected",
+        lobby,
+        statusMessage: null,
       });
       return true;
     } catch {
-      set({ status: "error", statusMessage: "Could not join room." });
+      const message =
+        get().statusMessage ?? "Could not join room. Check the code and try again.";
+      session?.abortJoin();
+      set({
+        status: "error",
+        statusMessage: message,
+        lobby: null,
+        roomCode: null,
+        localPeerId: null,
+        isHost: false,
+      });
       return false;
     }
   },
