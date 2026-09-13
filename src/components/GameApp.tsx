@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { createPuzzleState } from "@/game/puzzleEngine";
 import { useGameStore } from "@/store/gameStore";
 import { CharacterSelect } from "./CharacterSelect";
 import { GameBoard } from "./GameBoard";
@@ -10,6 +12,22 @@ import { Button } from "@/components/ui/button";
 
 export function GameApp() {
   const { phase, resetGame } = useGameStore();
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      (window as Window & { __triggerCrisis?: () => void }).__triggerCrisis =
+        () => {
+          const s = useGameStore.getState();
+          useGameStore.setState({
+            phase: "crisis",
+            puzzle: createPuzzleState(),
+            clueCount: Math.max(s.clueCount, 3),
+            threatLevel: Math.max(s.threatLevel, 4),
+            log: [...s.log, "The Crisis erupts—the sigils must be aligned!"],
+          });
+        };
+    }
+  }, []);
 
   if (phase === "setup") {
     return (
