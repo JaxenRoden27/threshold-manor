@@ -2,11 +2,12 @@
 
 import { useMemo } from "react";
 import { useGameStore } from "@/store/gameStore";
-import type { Direction, Tile } from "@/game/types";
+import type { Direction, Player, Tile } from "@/game/types";
 import { DIRECTION_DELTA } from "@/game/tileData";
 import { Button } from "@/components/ui/button";
 
 const TILE_SIZE = 88;
+const MAP_PADDING = 40;
 const POOL_COLORS: Record<string, string> = {
   ground: "bg-emerald-900/80 border-emerald-600",
   upper: "bg-violet-900/80 border-violet-600",
@@ -51,8 +52,16 @@ export function GameBoard() {
     return doors;
   }, [tiles]);
 
-  const width = (bounds.maxX - bounds.minX + 1) * TILE_SIZE;
-  const height = (bounds.maxY - bounds.minY + 1) * TILE_SIZE;
+  const width = (bounds.maxX - bounds.minX + 1) * TILE_SIZE + MAP_PADDING * 2;
+  const height = (bounds.maxY - bounds.minY + 1) * TILE_SIZE + MAP_PADDING * 2;
+
+  const currentTile = active
+    ? tiles.find((t) => t.x === active.x && t.y === active.y)
+    : undefined;
+
+  const availableDirections = (["north", "south", "east", "west"] as Direction[]).filter(
+    (dir) => currentTile?.doors[dir]
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -62,8 +71,8 @@ export function GameBoard() {
           style={{ width, height, minWidth: width, minHeight: height }}
         >
           {tiles.map((tile) => {
-            const left = (tile.x - bounds.minX) * TILE_SIZE;
-            const top = (tile.y - bounds.minY) * TILE_SIZE;
+            const left = (tile.x - bounds.minX) * TILE_SIZE + MAP_PADDING;
+            const top = (tile.y - bounds.minY) * TILE_SIZE + MAP_PADDING;
             const playersHere = players.filter(
               (p) => p.x === tile.x && p.y === tile.y
             );
@@ -114,54 +123,65 @@ export function GameBoard() {
             );
           })}
 
-          {canMove &&
-            active &&
-            (["north", "south", "east", "west"] as Direction[]).map((dir) => {
-              const currentTile = tiles.find(
-                (t) => t.x === active.x && t.y === active.y
-              );
-              if (!currentTile?.doors[dir]) return null;
-              const { dx, dy } = DIRECTION_DELTA[dir];
-              const targetExists = tiles.some(
-                (t) => t.x === active.x + dx && t.y === active.y + dy
-              );
-              const label = dir.charAt(0).toUpperCase();
-
-              const tileLeft =
-                (active.x - bounds.minX) * TILE_SIZE + TILE_SIZE / 2 - 14;
-              const tileTop =
-                (active.y - bounds.minY) * TILE_SIZE + TILE_SIZE / 2 - 14;
-
-              const pos =
-                dir === "north"
-                  ? { left: tileLeft, top: tileTop - 44 }
-                  : dir === "south"
-                    ? { left: tileLeft, top: tileTop + 44 }
-                    : dir === "east"
-                      ? { left: tileLeft + 44, top: tileTop }
-                      : { left: tileLeft - 44, top: tileTop };
-
-              return (
-                <Button
-                  key={dir}
-                  size="sm"
-                  variant="outline"
-                  className="absolute z-10 h-7 w-7 border-amber-500/60 bg-stone-900/90 p-0 text-xs text-amber-200"
-                  style={pos}
-                  onClick={() => move(dir)}
-                  title={
-                    targetExists
-                      ? `Move ${dir} (1 AP)`
-                      : `Explore ${dir} (1 AP)`
-                  }
-                >
-                  {label}
-                  {!targetExists && "?"}
-                </Button>
-              );
-            })}
         </div>
       </div>
+
+      {canMove && availableDirections.length > 0 && (
+        <div className="rounded-lg border border-amber-700/40 bg-stone-900/80 p-3">
+          <p className="mb-2 text-center text-xs font-medium text-amber-200">
+            Choose a doorway · costs 1 AP
+          </p>
+          <div className="mx-auto grid w-fit grid-cols-3 gap-2">
+            <div />
+            {currentTile?.doors.north ? (
+              <DirectionButton
+                direction="north"
+                active={active!}
+                tiles={tiles}
+                onMove={move}
+              />
+            ) : (
+              <div />
+            )}
+            <div />
+            {currentTile?.doors.west ? (
+              <DirectionButton
+                direction="west"
+                active={active!}
+                tiles={tiles}
+                onMove={move}
+              />
+            ) : (
+              <div />
+            )}
+            <div className="flex h-10 w-10 items-center justify-center rounded-md border border-dashed border-stone-700 text-[10px] text-stone-500">
+              You
+            </div>
+            {currentTile?.doors.east ? (
+              <DirectionButton
+                direction="east"
+                active={active!}
+                tiles={tiles}
+                onMove={move}
+              />
+            ) : (
+              <div />
+            )}
+            <div />
+            {currentTile?.doors.south ? (
+              <DirectionButton
+                direction="south"
+                active={active!}
+                tiles={tiles}
+                onMove={move}
+              />
+            ) : (
+              <div />
+            )}
+            <div />
+          </div>
+        </div>
+      )}
 
       {unexploredDoors.length > 0 && (
         <p className="text-xs text-stone-500">
@@ -170,5 +190,38 @@ export function GameBoard() {
         </p>
       )}
     </div>
+  );
+}
+
+function DirectionButton({
+  direction,
+  active,
+  tiles,
+  onMove,
+}: {
+  direction: Direction;
+  active: Player;
+  tiles: Tile[];
+  onMove: (dir: Direction) => void;
+}) {
+  const { dx, dy } = DIRECTION_DELTA[direction];
+  const unexplored = !tiles.some(
+    (t) => t.x === active.x + dx && t.y === active.y + dy
+  );
+  const label = direction.charAt(0).toUpperCase();
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="h-10 w-10 border-amber-500 bg-amber-950/60 p-0 text-sm font-bold text-amber-100 shadow-sm hover:bg-amber-900/80"
+      onClick={() => onMove(direction)}
+      title={
+        unexplored ? `Explore ${direction} (1 AP)` : `Move ${direction} (1 AP)`
+      }
+    >
+      {label}
+      {unexplored ? "?" : ""}
+    </Button>
   );
 }
