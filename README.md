@@ -6,9 +6,11 @@ Inspired by *Betrayal at the House on the Hill*, adapted into a fully cooperativ
 
 ## Play online
 
-**https://jaxen-roden.github.io/threshold-manor/**
+**https://jaxenroden27.github.io/threshold-manor/**
 
-(After GitHub Pages is enabled on the `threshold-manor` repo.)
+Repo: **https://github.com/JaxenRoden27/threshold-manor**
+
+(GitHub Pages deploys automatically from `main` via `.github/workflows/deploy-pages.yml`.)
 
 ## Stack
 
@@ -52,8 +54,8 @@ Choose **Local Play** for hot-seat mode on one screen — no room code needed.
 Static export — no API routes. The workflow in `.github/workflows/deploy-pages.yml` builds with `NEXT_PUBLIC_BASE_PATH=/threshold-manor` and deploys the `out/` folder.
 
 ```bash
-npm run build
-# output in out/
+# One-time publish (requires GH_TOKEN or gh auth login)
+./scripts/publish-github.sh
 ```
 
 ## Game modules
