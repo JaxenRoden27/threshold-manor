@@ -14,25 +14,25 @@ jobs:
       signal_host: ${{ steps.host.outputs.signal_host }}
     steps:
       - uses: actions/checkout@v4
-      - name: Set signal host
+      - name: Resolve signal host
         id: host
         run: |
-          echo "signal_host=threshold-manor-signal.onrender.com" >> "$GITHUB_OUTPUT"
-          echo "Using signal host: threshold-manor-signal.onrender.com"
-      - name: Wake Render signal server
-        run: |
-          for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if curl -fsS "https://threshold-manor-signal.onrender.com/health" | grep -q ok; then
-              echo "Render signal server is healthy"
+          CANDIDATES=(
+            "${{ vars.SIGNAL_HOST }}"
+            "threshold-manor-signal.onrender.com"
+          )
+          for host in "${CANDIDATES[@]}"; do
+            [ -z "$host" ] && continue
+            if curl -fsS "https://${host}/health" | grep -q ok; then
+              echo "signal_host=${host}" >> "$GITHUB_OUTPUT"
+              echo "Using signal host: ${host}"
               exit 0
             fi
-            echo "Waiting for Render signal server (attempt $attempt)..."
-            sleep 15
+            echo "Signal host not ready: ${host}"
           done
-          echo "::warning::Render signal server not healthy yet. Connect Render to this repo via render.yaml if needed."
-          exit 0
+          echo "::error::No healthy signal server found. Deploy Render via render.yaml or set the SIGNAL_HOST repo variable."
+          exit 1
       - name: Smoke test WebSocket signaling
-        continue-on-error: true
         run: |
           node --input-type=module -e "
           const host = process.env.SIGNAL_HOST;
@@ -68,4 +68,4 @@ jobs:
           });
           "
         env:
-          SIGNAL_HOST: threshold-manor-signal.onrender.com
+          SIGNAL_HOST: ${{ steps.host.outputs.signal_host }}

@@ -1,0 +1,23 @@
+name: Deploy Render signal server
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - render.yaml
+      - signal-server/**
+
+jobs:
+  deploy:
+    if: ${{ secrets.RENDER_API_KEY != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render blueprint
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          curl -sf -X POST "https://api.render.com/v1/blueprints" \
+            -H "Authorization: Bearer ${RENDER_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\":\"threshold-manor\",\"repo\":\"https://github.com/JaxenRoden27/threshold-manor\",\"branch\":\"main\",\"autoDeploy\":\"yes\"}"
