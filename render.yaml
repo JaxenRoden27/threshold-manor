@@ -3,7 +3,10 @@ services:
     name: threshold-manor-signal
     runtime: node
     plan: free
+    repo: https://github.com/JaxenRoden27/threshold-manor
+    branch: main
     rootDir: signal-server
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /health
+    autoDeploy: true
