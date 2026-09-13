@@ -17,7 +17,7 @@ Repo: **https://github.com/JaxenRoden27/threshold-manor**
 - Next.js (static export) + TypeScript
 - Tailwind CSS + shadcn/ui
 - Zustand for game state
-- PeerJS (WebRTC) for free peer-to-peer multiplayer — no game server required
+- Cloudflare Worker WebSocket signaling (rooms stay registered when the host backgrounds their browser)
 
 ## Run locally
 
@@ -28,6 +28,18 @@ npm run dev
 
 Open [http://localhost:4317](http://localhost:4317).
 
+### Local multiplayer signaling
+
+Run the Node signal server and point the client at it:
+
+```bash
+cd signal-server && npm install && npm start
+```
+
+```bash
+NEXT_PUBLIC_SIGNAL_HOST=localhost:8787 npm run dev
+```
+
 ## Multiplayer room codes
 
 1. **Host** — Click **Create Room** on the setup screen. You receive a **4-letter code** (e.g. `XK7M`).
@@ -36,7 +48,9 @@ Open [http://localhost:4317](http://localhost:4317).
 4. **Ready up** — Each player selects a unique character and taps **Ready**.
 5. **Start** — The host taps **Start Game** when everyone is ready (2–4 players).
 
-Gameplay syncs over WebRTC via PeerJS (free cloud signaling). The **host** owns game state; all clients see the same mansion, turns, cards, dice rolls, and Crisis puzzle. Only the **active player** can move, roll dice, or act on their turn.
+Gameplay syncs over a WebSocket room server. The **host** owns game state; all clients see the same mansion, turns, cards, dice rolls, and Crisis puzzle. Only the **active player** can move, roll dice, or act on their turn.
+
+The host can briefly switch apps to copy the room code — the room stays registered on the signal server.
 
 ## Local play
 
@@ -51,7 +65,9 @@ Choose **Local Play** for hot-seat mode on one screen — no room code needed.
 
 ## Deploy to GitHub Pages
 
-Static export — no API routes. The workflow in `.github/workflows/deploy-pages.yml` builds with `NEXT_PUBLIC_BASE_PATH=/threshold-manor` and deploys the `out/` folder.
+Static export — no API routes. The workflow in `.github/workflows/deploy-pages.yml` deploys the Cloudflare Worker signal server, builds with `NEXT_PUBLIC_BASE_PATH=/threshold-manor`, and publishes the `out/` folder.
+
+A Render blueprint (`render.yaml`) is also included for an alternate Node signal server.
 
 ```bash
 # One-time publish (requires GH_TOKEN or gh auth login)
@@ -65,4 +81,6 @@ Static export — no API routes. The workflow in `.github/workflows/deploy-pages
 - `src/game/gameEngine.ts` — Core loop, movement, stat checks, crisis triggers
 - `src/game/puzzleEngine.ts` — Cooperative sigil alignment puzzle
 - `src/game/diceEngine.ts` — Dice roll logic
-- `src/multiplayer/` — PeerJS session, room codes, sync protocol
+- `src/multiplayer/` — WebSocket session, room codes, sync protocol
+- `worker/` — Cloudflare Durable Object signal server (production)
+- `signal-server/` — Node WebSocket signal server (local dev / Render)

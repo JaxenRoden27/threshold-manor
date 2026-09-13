@@ -15,8 +15,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  signal:
+    uses: ./.github/workflows/deploy-signal.yml
+    secrets:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
   build:
     runs-on: ubuntu-latest
+    needs: signal
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,6 +34,7 @@ jobs:
       - run: npm run build
         env:
           NEXT_PUBLIC_BASE_PATH: /threshold-manor
+          NEXT_PUBLIC_SIGNAL_HOST: ${{ needs.signal.outputs.signal_host }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: out

@@ -223,7 +223,12 @@ function handleClose(roomCode, socket) {
   if (!clientId) return;
 
   room.sessions.delete(clientId);
-  room.meta.lobby.members = room.meta.lobby.members.filter((m) => m.peerId !== clientId);
+
+  // Keep the host in the lobby when they background the app; only drop guests.
+  if (clientId !== room.meta.hostClientId) {
+    room.meta.lobby.members = room.meta.lobby.members.filter((m) => m.peerId !== clientId);
+  }
+
   touchRoom(roomCode, room);
   broadcast(room, { type: "lobby-update", lobby: room.meta.lobby });
 }

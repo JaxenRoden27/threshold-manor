@@ -31,24 +31,14 @@ export function GameApp() {
         };
     }
 
-    const onPageHide = (event: PageTransitionEvent) => {
-      if (event.persisted) return;
-      const { mode, status } = useMultiplayerStore.getState();
-      if (mode === "multiplayer" && status !== "idle") {
-        useMultiplayerStore.getState().leaveRoom();
-      }
-    };
-
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
         ensureHostAvailable();
       }
     };
 
-    window.addEventListener("pagehide", onPageHide);
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      window.removeEventListener("pagehide", onPageHide);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [ensureHostAvailable]);

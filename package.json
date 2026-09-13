@@ -6,7 +6,9 @@
     "dev": "next dev -p 4317",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "worker:dev": "wrangler dev --config worker/wrangler.toml",
+    "worker:deploy": "wrangler deploy --config worker/wrangler.toml"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -14,7 +16,6 @@
     "cn": "^0.3.0",
     "lucide-react": "^1.45.0",
     "next": "16.3.5",
-    "peerjs": "^1.5.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "shadcn": "^4.21.0",
@@ -29,6 +30,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
+    "wrangler": "^4.131.1",
     "typescript": "^5"
   }
 }

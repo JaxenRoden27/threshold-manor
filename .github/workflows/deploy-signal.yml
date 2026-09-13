@@ -1,0 +1,80 @@
+name: Deploy signal worker
+
+on:
+  workflow_call:
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+    outputs:
+      signal_host:
+        description: WebSocket signal host (no protocol)
+        value: ${{ jobs.deploy.outputs.signal_host }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    outputs:
+      signal_host: ${{ steps.host.outputs.signal_host }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Deploy Cloudflare Worker
+        id: wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config worker/wrangler.toml
+      - name: Resolve signal host
+        id: host
+        run: |
+          DEPLOY_LOG="${{ steps.wrangler.outputs.command-stdout }}"
+          HOST=$(echo "$DEPLOY_LOG" | grep -oE '[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev' | head -1)
+          if [ -z "$HOST" ]; then
+            HOST="threshold-manor-signal.${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev"
+          fi
+          echo "signal_host=$HOST" >> "$GITHUB_OUTPUT"
+          echo "Using signal host: $HOST"
+      - name: Smoke test WebSocket signaling
+        run: |
+          node --input-type=module -e "
+          const host = process.env.SIGNAL_HOST;
+          const code = 'SMOK';
+          const clientId = 'smoke-host';
+          const url = 'wss://' + host + '/' + code;
+          const ws = new WebSocket(url);
+          const timeout = setTimeout(() => {
+            console.error('WebSocket smoke test timed out');
+            process.exit(1);
+          }, 15000);
+          ws.addEventListener('open', () => {
+            ws.send(JSON.stringify({
+              type: 'host-create',
+              clientId,
+              roomCode: code,
+              maxPlayers: 4,
+            }));
+          });
+          ws.addEventListener('message', (event) => {
+            const msg = JSON.parse(String(event.data));
+            if (msg.type === 'session-ready' && msg.isHost) {
+              clearTimeout(timeout);
+              ws.close();
+              console.log('WebSocket smoke test passed');
+              process.exit(0);
+            }
+          });
+          ws.addEventListener('error', () => {
+            clearTimeout(timeout);
+            console.error('WebSocket smoke test failed');
+            process.exit(1);
+          });
+          "
+        env:
+          SIGNAL_HOST: ${{ steps.host.outputs.signal_host }}

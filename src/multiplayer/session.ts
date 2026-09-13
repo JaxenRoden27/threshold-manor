@@ -1,48 +1,25 @@
-import type { DataConnection, Peer, PeerError } from "peerjs";
 import type { GameState } from "@/game/types";
 import type { GameAction, LobbyState, NetMessage } from "./types";
-import { generateRoomCode, peerIdForRoom } from "./roomCode";
+import { generateRoomCode, normalizeRoomCode } from "./roomCode";
+import { getClientId } from "./clientId";
+import { getSignalWebSocketUrl } from "./signalHost";
 
-type PeerConstructor = typeof import("peerjs").default;
-
-const PEER_OPTIONS = {
-  host: "0.peerjs.com",
-  port: 443,
-  path: "/",
-  secure: true,
-  key: "peerjs",
-  debug: 0,
-  config: {
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      {
-        urls: ["turn:eu-0.turn.peerjs.com:3478", "turn:us-0.turn.peerjs.com:3478"],
-        username: "peerjs",
-        credential: "peerjsp",
-      },
-    ],
-  },
+type SessionReadyMessage = {
+  type: "session-ready";
+  isHost: boolean;
+  lobby: LobbyState;
 };
 
-const JOIN_ATTEMPTS = 5;
-const JOIN_ATTEMPT_DELAY_MS = 2500;
-const JOIN_TIMEOUT_MS = 12000;
-const LOBBY_SYNC_TIMEOUT_MS = 10000;
-const HOST_KEEPALIVE_MS = 4000;
+type ClientMessage =
+  | { type: "host-create"; clientId: string; roomCode: string; maxPlayers?: number }
+  | { type: "guest-join"; clientId: string }
+  | { type: "select-character"; peerId: string; characterId: string | null }
+  | { type: "set-ready"; peerId: string; ready: boolean }
+  | { type: "start-game" }
+  | { type: "publish-game-state"; state: GameState }
+  | { type: "action"; action: GameAction; fromPeerId: string };
 
-let PeerClass: PeerConstructor | null = null;
-
-async function getPeerClass(): Promise<PeerConstructor> {
-  if (!PeerClass) {
-    const mod = await import("peerjs");
-    PeerClass = mod.default;
-  }
-  return PeerClass;
-}
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const CONNECT_TIMEOUT_MS = 15000;
 
 export interface SessionCallbacks {
   onLobbyUpdate: (lobby: LobbyState) => void;
@@ -54,23 +31,19 @@ export interface SessionCallbacks {
 }
 
 export class MultiplayerSession {
-  private peer: Peer | null = null;
-  private connections = new Map<string, DataConnection>();
+  private socket: WebSocket | null = null;
   private callbacks: SessionCallbacks;
   private lobby: LobbyState | null = null;
-  private localPeerId = "";
+  private clientId = getClientId();
   private isHost = false;
-  private joinLobbyResolve: ((lobby: LobbyState) => void) | null = null;
-  private joinLobbyReject: ((error: Error) => void) | null = null;
-  private hostKeepaliveTimer: ReturnType<typeof setInterval> | null = null;
-  private hostReregistering = false;
+  private roomCode: string | null = null;
 
   constructor(callbacks: SessionCallbacks) {
     this.callbacks = callbacks;
   }
 
   getLocalPeerId() {
-    return this.localPeerId;
+    return this.clientId;
   }
 
   getIsHost() {
@@ -82,34 +55,27 @@ export class MultiplayerSession {
   }
 
   async createRoom(maxPlayers = 4): Promise<string> {
-    await getPeerClass();
     this.isHost = true;
     this.callbacks.onStatus("connecting");
 
     for (let attempt = 0; attempt < 8; attempt++) {
       const code = generateRoomCode();
-      const id = peerIdForRoom(code);
       try {
-        await this.initPeer(id);
-        this.lobby = {
+        await this.openRoom(code, {
+          type: "host-create",
+          clientId: this.clientId,
           roomCode: code,
-          members: [
-            {
-              peerId: this.localPeerId,
-              characterId: null,
-              isHost: true,
-              ready: false,
-            },
-          ],
           maxPlayers,
-          started: false,
-        };
-        this.startHostKeepalive();
-        this.broadcastLobby();
+        });
+        this.roomCode = code;
         this.callbacks.onStatus("connected");
         return code;
-      } catch {
-        this.teardownPeer();
+      } catch (error) {
+        if (error instanceof Error && error.message === "code-taken") {
+          continue;
+        }
+        this.disconnect();
+        throw error;
       }
     }
 
@@ -119,442 +85,185 @@ export class MultiplayerSession {
   }
 
   async joinRoom(code: string): Promise<void> {
-    await getPeerClass();
     this.isHost = false;
     this.lobby = null;
-    this.stopHostKeepalive();
     this.callbacks.onStatus("connecting");
 
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt < JOIN_ATTEMPTS; attempt++) {
-      if (attempt > 0) {
-        this.callbacks.onStatus(
-          "connecting",
-          `Looking for room… (attempt ${attempt + 1}/${JOIN_ATTEMPTS})`
-        );
-        await delay(JOIN_ATTEMPT_DELAY_MS);
-      }
-
-      try {
-        await this.attemptJoin(code);
-        return;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error("Join failed");
-        this.teardownPeer();
-      }
-    }
-
-    this.callbacks.onStatus(
-      "error",
-      "Could not find that room. Ask the host to keep the game open and try again."
-    );
-    throw lastError ?? new Error("Join failed");
+    const normalized = normalizeRoomCode(code);
+    await this.openRoom(normalized, {
+      type: "guest-join",
+      clientId: this.clientId,
+    });
+    this.roomCode = normalized;
+    this.callbacks.onStatus("connected");
   }
 
   ensureHostAvailable() {
-    if (this.isHost && this.lobby && !this.lobby.started) {
-      void this.ensureHostRegistered();
-    }
+    if (!this.isHost || !this.roomCode) return;
+    if (this.socket?.readyState === WebSocket.OPEN) return;
+    if (this.socket?.readyState === WebSocket.CONNECTING) return;
+
+    void this.openRoom(this.roomCode, {
+      type: "host-create",
+      clientId: this.clientId,
+      roomCode: this.roomCode,
+      maxPlayers: this.lobby?.maxPlayers ?? 4,
+    })
+      .then(() => {
+        this.callbacks.onStatus("connected");
+      })
+      .catch(() => {
+        this.callbacks.onStatus(
+          "error",
+          "Room connection lost. Leave and create a new room."
+        );
+      });
   }
 
   abortJoin() {
-    this.joinLobbyResolve = null;
-    this.joinLobbyReject = null;
-    this.teardownPeer();
+    this.disconnect();
     this.isHost = false;
     this.lobby = null;
+    this.roomCode = null;
   }
 
   selectCharacter(characterId: string | null) {
-    if (!this.lobby) return;
-    if (this.isHost) {
-      this.lobby = {
-        ...this.lobby,
-        members: this.lobby.members.map((m) =>
-          m.peerId === this.localPeerId ? { ...m, characterId, ready: false } : m
-        ),
-      };
-      this.broadcastLobby();
-    } else {
-      const hostConn = this.connections.values().next().value;
-      if (hostConn) {
-        this.send(hostConn, {
-          type: "select-character",
-          peerId: this.localPeerId,
-          characterId,
-        });
-      }
-    }
+    this.send({
+      type: "select-character",
+      peerId: this.clientId,
+      characterId,
+    });
   }
 
   setReady(ready: boolean) {
-    if (!this.lobby) return;
-    if (this.isHost) {
-      this.lobby = {
-        ...this.lobby,
-        members: this.lobby.members.map((m) =>
-          m.peerId === this.localPeerId ? { ...m, ready } : m
-        ),
-      };
-      this.broadcastLobby();
-    } else {
-      const hostConn = this.connections.values().next().value;
-      if (hostConn) {
-        this.send(hostConn, { type: "set-ready", peerId: this.localPeerId, ready });
-      }
-    }
+    this.send({
+      type: "set-ready",
+      peerId: this.clientId,
+      ready,
+    });
   }
 
   startGame() {
-    if (!this.isHost) {
-      const hostConn = this.connections.values().next().value;
-      if (hostConn) this.send(hostConn, { type: "start-game" });
-      return;
-    }
-    this.stopHostKeepalive();
+    if (!this.isHost) return;
+    this.send({ type: "start-game" });
   }
 
   broadcastGameState(state: GameState) {
     if (!this.isHost) return;
-    this.broadcast({ type: "game-state", state });
+    this.send({ type: "publish-game-state", state });
   }
 
   sendAction(action: GameAction) {
     if (this.isHost) return;
-    const hostConn = this.connections.values().next().value;
-    if (hostConn) {
-      this.send(hostConn, {
-        type: "action",
-        action,
-        fromPeerId: this.localPeerId,
-      });
-    }
+    this.send({
+      type: "action",
+      action,
+      fromPeerId: this.clientId,
+    });
   }
 
   destroy() {
-    this.stopHostKeepalive();
-    this.broadcast({ type: "host-left" });
-    for (const conn of this.connections.values()) conn.close();
-    this.connections.clear();
-    this.teardownPeer();
+    this.disconnect();
     this.lobby = null;
     this.isHost = false;
-    this.joinLobbyResolve = null;
-    this.joinLobbyReject = null;
+    this.roomCode = null;
     this.callbacks.onStatus("idle");
   }
 
-  private async attemptJoin(code: string): Promise<void> {
-    await this.initPeer();
-    const hostId = peerIdForRoom(code);
+  private async openRoom(code: string, handshake: ClientMessage): Promise<void> {
+    this.disconnect();
 
-    return new Promise((resolve, reject) => {
-      const peer = this.peer!;
-      let settled = false;
+    const socket = new WebSocket(getSignalWebSocketUrl(code));
+    this.socket = socket;
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error("Connection timeout"));
+      }, CONNECT_TIMEOUT_MS);
+
+      const onOpen = () => {
+        socket.send(JSON.stringify(handshake));
+      };
+
+      const onMessage = (event: MessageEvent) => {
+        let msg: SessionReadyMessage | NetMessage;
+        try {
+          msg = JSON.parse(String(event.data)) as SessionReadyMessage | NetMessage;
+        } catch {
+          return;
+        }
+
+        if (msg.type === "session-ready") {
+          cleanup();
+          this.isHost = msg.isHost;
+          this.lobby = msg.lobby;
+          this.callbacks.onLobbyUpdate(msg.lobby);
+          resolve();
+          return;
+        }
+
+        if (msg.type === "error") {
+          cleanup();
+          reject(new Error(msg.message));
+        }
+      };
+
+      const onError = () => {
+        cleanup();
+        reject(new Error("Connection failed"));
+      };
 
       const cleanup = () => {
-        clearTimeout(joinTimeout);
-        clearTimeout(lobbyTimeout);
-        peer.off("error", onPeerError);
-        this.joinLobbyResolve = null;
-        this.joinLobbyReject = null;
+        clearTimeout(timeout);
+        socket.removeEventListener("open", onOpen);
+        socket.removeEventListener("message", onMessage);
+        socket.removeEventListener("error", onError);
       };
 
-      const finish = (fn: () => void) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        fn();
-      };
-
-      const joinTimeout = setTimeout(() => {
-        finish(() => reject(new Error("Join timeout")));
-      }, JOIN_TIMEOUT_MS);
-
-      const onPeerError = (err: PeerError<string>) => {
-        if (err.type === "peer-unavailable") {
-          finish(() => reject(new Error("Peer unavailable")));
-        }
-      };
-
-      peer.on("error", onPeerError);
-
-      const conn = peer.connect(hostId, { reliable: true });
-      let lobbyTimeout: ReturnType<typeof setTimeout>;
-
-      conn.on("open", () => {
-        clearTimeout(joinTimeout);
-        this.connections.set(hostId, conn);
-        this.wireConnection(conn);
-        this.send(conn, { type: "join", peerId: this.localPeerId });
-
-        lobbyTimeout = setTimeout(() => {
-          finish(() => reject(new Error("Lobby timeout")));
-        }, LOBBY_SYNC_TIMEOUT_MS);
-
-        this.joinLobbyResolve = (lobby) => {
-          this.lobby = lobby;
-          finish(() => {
-            this.callbacks.onStatus("connected");
-            resolve();
-          });
-        };
-        this.joinLobbyReject = (error) => {
-          finish(() => reject(error));
-        };
-      });
-
-      conn.on("error", () => {
-        finish(() => reject(new Error("Connection error")));
-      });
-
-      conn.on("close", () => {
-        if (!settled) {
-          finish(() => reject(new Error("Connection closed")));
-        }
-      });
+      socket.addEventListener("open", onOpen);
+      socket.addEventListener("message", onMessage);
+      socket.addEventListener("error", onError);
     });
-  }
 
-  private async initPeer(id?: string): Promise<void> {
-    this.teardownPeer();
-    const Peer = await getPeerClass();
-
-    return new Promise((resolve, reject) => {
-      const peer = id ? new Peer(id, PEER_OPTIONS) : new Peer(PEER_OPTIONS);
-      this.peer = peer;
-
-      const onOpen = (peerId: string) => {
-        peer.off("error", onError);
-        this.localPeerId = peerId;
-
-        if (id) {
-          peer.on("connection", (conn) => this.handleInboundConnection(conn));
-          peer.on("disconnected", () => this.handleHostDisconnected());
-          peer.on("close", () => this.handleHostClosed());
-        }
-
-        resolve();
-      };
-
-      const onError = (err: PeerError<string>) => {
-        peer.off("open", onOpen);
-        reject(err);
-      };
-
-      peer.on("open", onOpen);
-      peer.on("error", onError);
-    });
-  }
-
-  private startHostKeepalive() {
-    this.stopHostKeepalive();
-    this.hostKeepaliveTimer = setInterval(() => {
-      void this.ensureHostRegistered();
-    }, HOST_KEEPALIVE_MS);
-
-    if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", this.onVisibilityChange);
-    }
-  }
-
-  private stopHostKeepalive() {
-    if (this.hostKeepaliveTimer) {
-      clearInterval(this.hostKeepaliveTimer);
-      this.hostKeepaliveTimer = null;
-    }
-    if (typeof document !== "undefined") {
-      document.removeEventListener("visibilitychange", this.onVisibilityChange);
-    }
-  }
-
-  private onVisibilityChange = () => {
-    if (document.visibilityState === "visible") {
-      this.ensureHostAvailable();
-    }
-  };
-
-  private async ensureHostRegistered(): Promise<void> {
-    if (!this.isHost || !this.lobby || this.lobby.started || this.hostReregistering) {
-      return;
-    }
-
-    const expectedId = peerIdForRoom(this.lobby.roomCode);
-    const needsReregister =
-      !this.peer ||
-      this.peer.destroyed ||
-      this.peer.disconnected ||
-      !this.peer.open ||
-      this.localPeerId !== expectedId;
-
-    if (!needsReregister) return;
-
-    this.hostReregistering = true;
-    try {
-      const hadGuests = this.connections.size > 0;
-      if (hadGuests) {
-        try {
-          this.peer?.reconnect();
-          await delay(1500);
-          if (this.peer?.open && !this.peer.disconnected) {
-            this.callbacks.onStatus("connected");
-            return;
-          }
-        } catch {
-          // Fall through to full re-register.
-        }
+    socket.addEventListener("message", (event) => {
+      let msg: SessionReadyMessage | NetMessage;
+      try {
+        msg = JSON.parse(String(event.data)) as SessionReadyMessage | NetMessage;
+      } catch {
+        return;
       }
+      if (msg.type === "session-ready") return;
+      this.handleMessage(msg);
+    });
 
-      const guestConnections = [...this.connections.values()];
-      for (const conn of guestConnections) conn.close();
-      this.connections.clear();
-
-      await this.initPeer(expectedId);
-      this.callbacks.onStatus("connected");
-      this.broadcastLobby();
-    } catch {
-      this.callbacks.onStatus(
-        "error",
-        "Room connection lost. Leave and create a new room."
-      );
-    } finally {
-      this.hostReregistering = false;
-    }
-  }
-
-  private handleInboundConnection(conn: DataConnection) {
-    this.connections.set(conn.peer, conn);
-    this.wireConnection(conn);
-    conn.on("open", () => {
-      if (!this.lobby || !this.isHost) return;
-      const exists = this.lobby.members.some((m) => m.peerId === conn.peer);
-      if (!exists && this.lobby.members.length < this.lobby.maxPlayers) {
-        this.lobby = {
-          ...this.lobby,
-          members: [
-            ...this.lobby.members,
-            {
-              peerId: conn.peer,
-              characterId: null,
-              isHost: false,
-              ready: false,
-            },
-          ],
-        };
-        this.broadcastLobby();
+    socket.addEventListener("close", () => {
+      if (this.isHost) {
+        this.ensureHostAvailable();
+        return;
       }
+      if (this.lobby?.started) return;
+      this.callbacks.onHostLeft();
     });
   }
 
-  private handleHostDisconnected() {
-    if (!this.isHost || !this.peer || this.peer.destroyed) return;
-    this.callbacks.onStatus("connecting", "Reconnecting room…");
-    void this.ensureHostRegistered();
-  }
-
-  private handleHostClosed() {
-    if (!this.isHost) return;
-    this.callbacks.onStatus("error", "Room connection lost. Create a new room.");
-  }
-
-  private teardownPeer() {
-    for (const conn of this.connections.values()) conn.close();
-    this.connections.clear();
-    if (this.peer) {
-      this.peer.removeAllListeners();
-      this.peer.destroy();
-      this.peer = null;
-    }
-    this.localPeerId = "";
-  }
-
-  private wireConnection(conn: DataConnection) {
-    conn.on("data", (raw) => {
-      const msg = raw as NetMessage;
-      this.handleMessage(msg, conn);
-    });
-    conn.on("close", () => {
-      this.connections.delete(conn.peer);
-      if (this.isHost && this.lobby) {
-        this.lobby = {
-          ...this.lobby,
-          members: this.lobby.members.filter((m) => m.peerId !== conn.peer),
-        };
-        this.broadcastLobby();
-      } else if (!this.isHost) {
-        this.callbacks.onHostLeft();
-      }
-    });
-  }
-
-  private handleMessage(msg: NetMessage, conn: DataConnection) {
+  private handleMessage(msg: NetMessage) {
     switch (msg.type) {
-      case "join":
-        if (this.isHost && this.lobby) {
-          const exists = this.lobby.members.some((m) => m.peerId === msg.peerId);
-          if (!exists && this.lobby.members.length < this.lobby.maxPlayers) {
-            this.lobby = {
-              ...this.lobby,
-              members: [
-                ...this.lobby.members,
-                {
-                  peerId: msg.peerId,
-                  characterId: null,
-                  isHost: false,
-                  ready: false,
-                },
-              ],
-            };
-          }
-          this.broadcastLobby();
-        }
-        break;
-      case "select-character":
-        if (this.isHost && this.lobby) {
-          this.lobby = {
-            ...this.lobby,
-            members: this.lobby.members.map((m) =>
-              m.peerId === msg.peerId
-                ? { ...m, characterId: msg.characterId, ready: false }
-                : m
-            ),
-          };
-          this.broadcastLobby();
-        }
-        break;
-      case "set-ready":
-        if (this.isHost && this.lobby) {
-          this.lobby = {
-            ...this.lobby,
-            members: this.lobby.members.map((m) =>
-              m.peerId === msg.peerId ? { ...m, ready: msg.ready } : m
-            ),
-          };
-          this.broadcastLobby();
-        }
-        break;
-      case "start-game":
-        if (this.isHost) this.callbacks.onStartGameRequest();
-        break;
-      case "action":
-        if (this.isHost) this.callbacks.onAction(msg.action, msg.fromPeerId);
-        break;
       case "lobby-update":
         this.lobby = msg.lobby;
         this.callbacks.onLobbyUpdate(msg.lobby);
-        if (this.joinLobbyResolve) {
-          this.joinLobbyResolve(msg.lobby);
-        }
         break;
       case "game-state":
         if (!this.isHost) this.callbacks.onGameState(msg.state);
         break;
+      case "action":
+        if (this.isHost) this.callbacks.onAction(msg.action, msg.fromPeerId);
+        break;
+      case "start-game":
+        if (!this.isHost) this.callbacks.onStartGameRequest();
+        break;
       case "error":
         this.callbacks.onStatus("error", msg.message);
-        if (this.joinLobbyReject) {
-          this.joinLobbyReject(new Error(msg.message));
-        }
         break;
       case "host-left":
         this.callbacks.onHostLeft();
@@ -562,19 +271,15 @@ export class MultiplayerSession {
     }
   }
 
-  private broadcastLobby() {
-    if (!this.lobby) return;
-    this.callbacks.onLobbyUpdate(this.lobby);
-    this.broadcast({ type: "lobby-update", lobby: this.lobby });
+  private send(message: ClientMessage) {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return;
+    this.socket.send(JSON.stringify(message));
   }
 
-  private broadcast(msg: NetMessage) {
-    for (const conn of this.connections.values()) {
-      if (conn.open) this.send(conn, msg);
+  private disconnect() {
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
     }
-  }
-
-  private send(conn: DataConnection, msg: NetMessage) {
-    conn.send(msg);
   }
 }

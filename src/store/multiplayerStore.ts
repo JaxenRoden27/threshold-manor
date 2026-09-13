@@ -164,9 +164,12 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
         statusMessage: null,
       });
       return true;
-    } catch {
-      const message =
-        get().statusMessage ?? "Could not join room. Check the code and try again.";
+    } catch (error) {
+      const fallback =
+        error instanceof Error && error.message === "room-not-found"
+          ? "Could not find that room. Check the code and try again."
+          : "Could not join room. Check the code and try again.";
+      const message = get().statusMessage ?? fallback;
       session?.abortJoin();
       set({
         status: "error",
@@ -221,6 +224,7 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
 
     const gameState = startMultiplayerGame(members);
     useGameStore.setState(gameState);
+    session?.startGame();
     session?.broadcastGameState(gameState);
 
     set({
