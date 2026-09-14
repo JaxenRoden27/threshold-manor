@@ -16,9 +16,15 @@ import { DiceRollPanel } from "@/components/DiceRollPanel";
 import { Die } from "@/components/Die";
 
 export function CardModal() {
-  const { pendingCard, players, activePlayerIndex, clueCount } = useGameStore();
-  const { rollStatCheck, rollThreatDie, dismissPendingCard, resolveItemCard, canAct } =
-    useGameActions();
+  const { pendingCard, players, activePlayerIndex, cluesDiscovered } =
+    useGameStore();
+  const {
+    rollStatCheck,
+    rollCrisisRoll,
+    dismissPendingCard,
+    resolveItemCard,
+    canAct,
+  } = useGameActions();
   const canRoll = canAct();
   const canContinue = canAct();
 
@@ -35,8 +41,8 @@ export function CardModal() {
     clue: "bg-rose-900 text-rose-200",
   };
 
-  const statValue =
-    card.stat && active ? active[card.stat] : 0;
+  const statDiceCount =
+    card.stat && active ? active[card.stat] : 1;
 
   return (
     <Dialog open={open} onOpenChange={() => resolved && dismissPendingCard()}>
@@ -67,13 +73,11 @@ export function CardModal() {
         {card.type === "event" && pendingCard?.rollPhase === "await-stat" && (
           <DiceRollPanel
             config={{
-              diceCount: 1,
-              modifier: statValue,
-              modifierLabel: card.stat ?? undefined,
+              diceCount: statDiceCount,
               target: card.difficulty,
               targetLabel: "difficulty",
               title: `${active?.name} tests ${card.stat}`,
-              description: "Roll the die and add your stat to beat the difficulty.",
+              description: `Roll ${statDiceCount} Betrayal dice (${card.stat}). Sum must meet or beat the difficulty.`,
             }}
             canRoll={canRoll}
             waitingLabel={`Waiting for ${active?.name} to roll…`}
@@ -83,13 +87,13 @@ export function CardModal() {
 
         {card.type === "event" && resolved && pendingCard?.statDice && (
           <div className="space-y-3">
-            <div className="flex items-center justify-center gap-3">
-              <Die value={pendingCard.statDice[0]} size="md" />
-              {card.stat && (
-                <span className="text-sm text-stone-400">
-                  + {statValue} {card.stat}
-                </span>
-              )}
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              {pendingCard.statDice.map((face, i) => (
+                <Die key={i} value={face} size="md" />
+              ))}
+              <span className="text-sm text-stone-400">
+                = {pendingCard.roll}
+              </span>
             </div>
             <p
               className={
@@ -101,30 +105,31 @@ export function CardModal() {
           </div>
         )}
 
-        {card.type === "clue" && pendingCard?.rollPhase === "await-threat" && (
+        {card.type === "clue" && pendingCard?.rollPhase === "await-crisis" && (
           <DiceRollPanel
             config={{
-              diceCount: 1,
-              crisisBelow: clueCount + 1,
-              title: "Threat Die",
+              diceCount: 6,
+              crisisBelow: cluesDiscovered + 1,
+              title: "Crisis Roll",
               description:
-                "Roll the threat die. If the result is below the new Clue count—or you reach 3 Clues—the Crisis begins.",
+                "Roll 6 Betrayal dice. If the sum is below your new Clue count, the Crisis begins.",
               variant: "threat",
             }}
             canRoll={canRoll}
-            waitingLabel={`Waiting for ${active?.name} to roll the threat die…`}
-            onComplete={(dice) => rollThreatDie(dice)}
+            waitingLabel={`Waiting for ${active?.name} to roll the Crisis dice…`}
+            onComplete={(dice) => rollCrisisRoll(dice)}
           />
         )}
 
-        {card.type === "clue" && resolved && pendingCard?.threatDice && (
+        {card.type === "clue" && resolved && pendingCard?.crisisDice && (
           <div className="space-y-3">
-            <div className="flex justify-center">
-              <Die value={pendingCard.threatDice[0]} size="md" variant="threat" />
+            <div className="flex flex-wrap justify-center gap-2">
+              {pendingCard.crisisDice.map((face, i) => (
+                <Die key={i} value={face} size="md" variant="threat" />
+              ))}
             </div>
-            <p className="text-amber-300 text-xs">
-              Threat roll complete. Check the journal for whether the Crisis
-              awakened.
+            <p className="text-center text-sm text-amber-300">
+              Crisis Roll total: {pendingCard.roll}
             </p>
           </div>
         )}

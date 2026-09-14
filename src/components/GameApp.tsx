@@ -24,7 +24,7 @@ export function GameApp() {
           useGameStore.setState({
             phase: "crisis",
             puzzle: createPuzzleState(),
-            clueCount: Math.max(s.clueCount, 3),
+            cluesDiscovered: Math.max(s.cluesDiscovered, 3),
             threatLevel: Math.max(s.threatLevel, 4),
             log: [...s.log, "The Crisis erupts—the sigils must be aligned!"],
           });

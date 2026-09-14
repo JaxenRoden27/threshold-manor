@@ -23,12 +23,14 @@ export interface LobbyState {
 
 export type GameAction =
   | { kind: "move"; direction: "north" | "south" | "east" | "west" }
+  | { kind: "use-floor-transition" }
   | { kind: "resolve-item" }
   | { kind: "roll-stat"; dice: number[] }
-  | { kind: "roll-threat"; dice: number[] }
+  | { kind: "roll-crisis"; dice: number[] }
   | { kind: "dismiss-card" }
   | { kind: "end-turn" }
-  | { kind: "rotate-sigil"; index: number };
+  | { kind: "rotate-sigil"; index: number }
+  | { kind: "set-view-floor"; floor: "ground" | "upper" | "basement" };
 
 export type NetMessage =
   | { type: "lobby-update"; lobby: LobbyState }

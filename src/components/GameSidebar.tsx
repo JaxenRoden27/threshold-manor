@@ -20,7 +20,7 @@ export function GameSidebar() {
     players,
     activePlayerIndex,
     phase,
-    clueCount,
+    cluesDiscovered,
     threatLevel,
     log,
     pendingCard,
@@ -49,9 +49,9 @@ export function GameSidebar() {
           <div>
             <div className="mb-1 flex justify-between text-stone-400">
               <span>Clues</span>
-              <span>{clueCount}/3</span>
+              <span>{cluesDiscovered}</span>
             </div>
-            <Progress value={(clueCount / 3) * 100} className="h-2" />
+            <Progress value={Math.min(100, cluesDiscovered * 20)} className="h-2" />
           </div>
           <div className="flex justify-between text-stone-300">
             <span>Threat Level</span>
@@ -111,7 +111,7 @@ export function GameSidebar() {
                   : "text-stone-400"
               }`}
             >
-              {p.name} — AP {p.ap}
+              {p.name} — AP {p.ap} · {p.floor}
             </div>
           ))}
         </CardContent>

@@ -1,25 +1,29 @@
 import { create } from "zustand";
 import {
+  applyCrisisRoll,
   applyStatRoll,
-  applyThreatRoll,
   createInitialState,
   dismissCard,
   endTurn,
   movePlayer,
   resolveItemCard,
   setPlayerCount,
+  setViewFloor,
   startGame,
+  useFloorTransition,
 } from "@/game/gameEngine";
 import { rotateSigil, isPuzzleFailed } from "@/game/puzzleEngine";
-import type { Direction, GameState, Phase } from "@/game/types";
+import type { Direction, Floor, GameState, Phase } from "@/game/types";
 
 interface GameStore extends GameState {
   setPlayerCount: (count: number) => void;
   startGame: (selectedIds: string[]) => void;
+  setViewFloor: (floor: Floor) => void;
   move: (direction: Direction) => void;
+  useFloorTransition: () => void;
   resolveItemCard: () => void;
   rollStatCheck: (dice: number[]) => void;
-  rollThreatDie: (dice: number[]) => void;
+  rollCrisisRoll: (dice: number[]) => void;
   dismissPendingCard: () => void;
   endTurn: () => void;
   rotatePuzzleSigil: (index: number) => void;
@@ -33,7 +37,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   startGame: (selectedIds) => set((s) => startGame(s, selectedIds)),
 
+  setViewFloor: (floor) => set((s) => setViewFloor(s, floor)),
+
   move: (direction) => set((s) => movePlayer(s, direction)),
+
+  useFloorTransition: () => set((s) => useFloorTransition(s)),
 
   resolveItemCard: () => {
     const s = get();
@@ -48,10 +56,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set(applyStatRoll(s, s.pendingCard, dice));
   },
 
-  rollThreatDie: (dice) => {
+  rollCrisisRoll: (dice) => {
     const s = get();
-    if (!s.pendingCard || s.pendingCard.rollPhase !== "await-threat") return;
-    set(applyThreatRoll(s, s.pendingCard, dice));
+    if (!s.pendingCard || s.pendingCard.rollPhase !== "await-crisis") return;
+    set(applyCrisisRoll(s, s.pendingCard, dice));
   },
 
   dismissPendingCard: () => set((s) => dismissCard(s)),
@@ -80,12 +88,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
       log.push("The ley lines overload. The house claims you all.");
     } else if (players[s.activePlayerIndex].ap <= 0) {
       const nextIndex = (s.activePlayerIndex + 1) % s.players.length;
-      players[nextIndex] = { ...players[nextIndex], ap: players[nextIndex].speed };
-      log.push(`${players[nextIndex].name} steps up to the sigils.`);
+      const refreshed = players.map((p, i) =>
+        i === nextIndex ? { ...p, ap: p.speed } : p
+      );
+      log.push(`${refreshed[nextIndex].name} steps up to the sigils.`);
       set({
         ...s,
         puzzle,
-        players,
+        players: refreshed,
         activePlayerIndex: nextIndex,
         phase,
         log,

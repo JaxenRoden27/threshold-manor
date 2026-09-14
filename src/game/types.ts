@@ -1,8 +1,17 @@
 export type Stat = "might" | "speed" | "sanity" | "knowledge";
 export type Phase = "setup" | "exploration" | "crisis" | "victory" | "defeat";
-export type TilePool = "ground" | "upper" | "basement";
+export type Floor = "ground" | "upper" | "basement";
+export type TilePool = Floor;
 export type Direction = "north" | "south" | "east" | "west";
 export type CardType = "event" | "item" | "clue";
+
+export type TileSpecial =
+  | "entrance-hall"
+  | "foyer"
+  | "grand-staircase"
+  | "upper-landing"
+  | "coal-chute"
+  | "basement-landing";
 
 export interface CharacterTemplate {
   id: string;
@@ -25,6 +34,7 @@ export interface Player {
   knowledge: number;
   inventory: string[];
   ap: number;
+  floor: Floor;
   x: number;
   y: number;
 }
@@ -36,15 +46,24 @@ export interface Doors {
   west: boolean;
 }
 
+export interface FloorLink {
+  floor: Floor;
+  x: number;
+  y: number;
+}
+
 export interface Tile {
   id: string;
   name: string;
   pool: TilePool;
+  floor: Floor;
   x: number;
   y: number;
   doors: Doors;
   visited: boolean;
   cardResolved: boolean;
+  special?: TileSpecial;
+  floorLink?: FloorLink;
 }
 
 export interface Card {
@@ -65,6 +84,7 @@ export type CardRollPhase =
   | "none"
   | "await-stat"
   | "await-threat"
+  | "await-crisis"
   | "complete";
 
 export interface PendingCard {
@@ -74,6 +94,7 @@ export interface PendingCard {
   rollPhase: CardRollPhase;
   statDice?: number[];
   threatDice?: number[];
+  crisisDice?: number[];
   roll?: number;
   success?: boolean;
 }
@@ -91,10 +112,12 @@ export interface GameState {
   players: Player[];
   activePlayerIndex: number;
   tiles: Tile[];
-  clueCount: number;
+  viewFloor: Floor;
+  cluesDiscovered: number;
   threatLevel: number;
   pendingCard: PendingCard | null;
   log: string[];
   puzzle: PuzzleState | null;
   selectedPlayerCount: number;
+  tileDeck: string[];
 }

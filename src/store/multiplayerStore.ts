@@ -60,8 +60,14 @@ function applyHostAction(action: GameAction, fromPeerId: string) {
     case "roll-stat":
       useGameStore.getState().rollStatCheck(action.dice);
       break;
-    case "roll-threat":
-      useGameStore.getState().rollThreatDie(action.dice);
+    case "roll-crisis":
+      useGameStore.getState().rollCrisisRoll(action.dice);
+      break;
+    case "use-floor-transition":
+      useGameStore.getState().useFloorTransition();
+      break;
+    case "set-view-floor":
+      useGameStore.getState().setViewFloor(action.floor);
       break;
     case "dismiss-card":
       useGameStore.getState().dismissPendingCard();

@@ -1,15 +1,17 @@
 import { drawCard, drawCardType } from "./cardData";
 import {
+  createShuffledDeck,
+  createStarterTiles,
   createTileId,
   DIRECTION_DELTA,
-  ENTRANCE_TILE,
+  drawTileForFloor,
   OPPOSITE,
-  pickPool,
-  pickTileTemplate,
+  templateToTile,
 } from "./tileData";
 import type {
   CharacterTemplate,
   Direction,
+  Floor,
   GameState,
   PendingCard,
   Phase,
@@ -19,10 +21,10 @@ import type {
 } from "./types";
 import { createPuzzleState } from "./puzzleEngine";
 import {
+  betrayalFaceLabel,
+  checkCrisisTrigger,
   checkStatSuccess,
-  checkThreatCrisis,
-  computeStatTotal,
-  dieFaceLabel,
+  rollBetrayalDice,
 } from "./diceEngine";
 
 export const CHARACTER_TEMPLATES: CharacterTemplate[] = [
@@ -70,12 +72,14 @@ export function createInitialState(): GameState {
     players: [],
     activePlayerIndex: 0,
     tiles: [],
-    clueCount: 0,
+    viewFloor: "ground",
+    cluesDiscovered: 0,
     threatLevel: 1,
     pendingCard: null,
     log: [],
     puzzle: null,
     selectedPlayerCount: 2,
+    tileDeck: [],
   };
 }
 
@@ -125,44 +129,45 @@ export function startGame(
     knowledge: t.knowledge,
     inventory: [],
     ap: t.speed,
+    floor: "ground" as Floor,
     x: 0,
     y: 0,
   }));
-
-  const entrance: Tile = {
-    id: createTileId(0, 0),
-    name: ENTRANCE_TILE.name,
-    pool: ENTRANCE_TILE.pool,
-    x: 0,
-    y: 0,
-    doors: { ...ENTRANCE_TILE.doors },
-    visited: true,
-    cardResolved: true,
-  };
 
   return {
     ...state,
     phase: "exploration",
     players,
     activePlayerIndex: 0,
-    tiles: [entrance],
-    clueCount: 0,
+    tiles: createStarterTiles(),
+    viewFloor: "ground",
+    cluesDiscovered: 0,
     threatLevel: 1,
     pendingCard: null,
+    tileDeck: createShuffledDeck(),
     log: [
-      "You stand at the Front Entrance. The door seals behind you.",
-      "Explore the house. Uncover Clues—but each one wakes the Crisis.",
+      "You stand in the Entrance Hall. The door seals behind you.",
+      "Explore floor by floor. Uncover Clues—but each one risks the Crisis.",
     ],
     puzzle: null,
   };
 }
 
-export function getTileAt(tiles: Tile[], x: number, y: number): Tile | undefined {
-  return tiles.find((t) => t.x === x && t.y === y);
+export function getTileAt(
+  tiles: Tile[],
+  floor: Floor,
+  x: number,
+  y: number
+): Tile | undefined {
+  return tiles.find((t) => t.floor === floor && t.x === x && t.y === y);
 }
 
 export function getActivePlayer(state: GameState): Player {
   return state.players[state.activePlayerIndex];
+}
+
+export function setViewFloor(state: GameState, floor: Floor): GameState {
+  return { ...state, viewFloor: floor };
 }
 
 function applyStatEffect(
@@ -184,9 +189,15 @@ function updatePlayer(
   return players.map((p, i) => (i === index ? updater(p) : p));
 }
 
+function beginTurnForPlayer(players: Player[], index: number): Player[] {
+  return players.map((p, i) =>
+    i === index ? { ...p, ap: p.speed } : p
+  );
+}
+
 function initialRollPhase(card: PendingCard["card"]): PendingCard["rollPhase"] {
   if (card.type === "event") return "await-stat";
-  if (card.type === "clue") return "await-threat";
+  if (card.type === "clue") return "await-crisis";
   return "none";
 }
 
@@ -210,15 +221,13 @@ export function applyStatRoll(
   const { card } = pending;
   if (card.type !== "event" || !card.stat || !card.difficulty) return state;
 
-  const dieFace = dice[0] ?? 1;
-  const modifier = state.players[state.activePlayerIndex][card.stat];
-  const total = computeStatTotal(dieFace, modifier);
-  const success = checkStatSuccess(dieFace, modifier, card.difficulty);
+  const total = dice.reduce((sum, face) => sum + face, 0);
+  const success = checkStatSuccess(total, card.difficulty);
 
   let players = [...state.players];
   let log = [
     ...state.log,
-    `${state.players[state.activePlayerIndex].name} rolls ${dieFaceLabel(dieFace)} + ${modifier} ${card.stat} = ${total} vs ${card.difficulty}. ${
+    `${state.players[state.activePlayerIndex].name} rolls ${dice.map(betrayalFaceLabel).join(", ")} = ${total} vs ${card.difficulty}. ${
       success ? "Success!" : "Failure."
     }`,
   ];
@@ -251,7 +260,7 @@ export function applyStatRoll(
   };
 }
 
-export function applyThreatRoll(
+export function applyCrisisRoll(
   state: GameState,
   pending: PendingCard,
   dice: number[]
@@ -259,30 +268,26 @@ export function applyThreatRoll(
   const { card } = pending;
   if (card.type !== "clue") return state;
 
-  const dieFace = dice[0] ?? 1;
-  let clueCount = state.clueCount + 1;
+  const total = dice.reduce((sum, face) => sum + face, 0);
+  const cluesDiscovered = state.cluesDiscovered + 1;
   let threatLevel = state.threatLevel + 1;
   let phase: Phase = state.phase;
   let puzzle = state.puzzle;
   let log = [
     ...state.log,
     card.successText,
-    `Clue uncovered (${clueCount}/3). Threat Level: ${threatLevel}.`,
-    `Threat die shows ${dieFaceLabel(dieFace)} (${dieFace}).`,
+    `Clue uncovered (${cluesDiscovered} total). Crisis Roll: ${dice.map(betrayalFaceLabel).join(", ")} = ${total}.`,
   ];
 
-  const crisisFromRoll = checkThreatCrisis(dieFace, clueCount);
-  const crisisFromCount = clueCount >= 3;
-
-  if (crisisFromRoll || crisisFromCount) {
+  if (checkCrisisTrigger(total, cluesDiscovered)) {
     phase = "crisis";
     puzzle = createPuzzleState();
     log.push(
-      crisisFromCount
-        ? "Three Clues revealed—the Crisis erupts!"
-        : `${dieFaceLabel(dieFace)} (${dieFace}) falls below Clue count (${clueCount})—the Crisis erupts!`
+      `Crisis Roll ${total} falls below ${cluesDiscovered} Clue(s)—the house erupts!`
     );
     log.push("Align the sigils together to redirect the house's power!");
+  } else {
+    log.push(`The house holds—for now. (${total} ≥ ${cluesDiscovered} Clues)`);
   }
 
   const tiles = state.tiles.map((t) =>
@@ -292,19 +297,30 @@ export function applyThreatRoll(
   return {
     ...state,
     tiles,
-    clueCount,
+    cluesDiscovered,
     threatLevel,
     phase,
     puzzle,
     pendingCard: {
       ...pending,
+      crisisDice: dice,
       threatDice: dice,
+      roll: total,
       success: true,
       rollPhase: "complete",
       resolved: true,
     },
     log,
   };
+}
+
+/** @deprecated Use applyCrisisRoll */
+export function applyThreatRoll(
+  state: GameState,
+  pending: PendingCard,
+  dice: number[]
+): GameState {
+  return applyCrisisRoll(state, pending, dice);
 }
 
 export function resolveItemCard(
@@ -350,20 +366,17 @@ export function resolveItemCard(
 
 export function dismissCard(state: GameState): GameState {
   const active = getActivePlayer(state);
-  const refreshed = updatePlayer(state.players, state.activePlayerIndex, (p) => ({
-    ...p,
-    ap: p.speed,
-  }));
+  const nextIndex = (state.activePlayerIndex + 1) % state.players.length;
 
   return {
     ...state,
-    players: refreshed,
+    players: beginTurnForPlayer(state.players, nextIndex),
     pendingCard: null,
+    activePlayerIndex: nextIndex,
     log: [
       ...state.log,
-      `${active.name} ends their turn. Next explorer steps forward.`,
+      `${active.name} ends their turn. ${state.players[nextIndex].name} steps forward.`,
     ],
-    activePlayerIndex: (state.activePlayerIndex + 1) % state.players.length,
   };
 }
 
@@ -376,7 +389,7 @@ export function movePlayer(
   const active = getActivePlayer(state);
   if (active.ap <= 0) return state;
 
-  const currentTile = getTileAt(state.tiles, active.x, active.y);
+  const currentTile = getTileAt(state.tiles, active.floor, active.x, active.y);
   if (!currentTile || !currentTile.doors[direction]) return state;
 
   const { dx, dy } = DIRECTION_DELTA[direction];
@@ -384,39 +397,39 @@ export function movePlayer(
   const ny = active.y + dy;
 
   let tiles = [...state.tiles];
+  let tileDeck = state.tileDeck;
   let log = [...state.log];
   let pendingCard: PendingCard | null = state.pendingCard;
 
-  const existing = getTileAt(tiles, nx, ny);
+  const existing = getTileAt(tiles, active.floor, nx, ny);
   if (!existing) {
-    const pool = pickPool(state.clueCount);
     const requiredDoor = OPPOSITE[direction];
-    const template = pickTileTemplate(pool, requiredDoor);
-    const newTile: Tile = {
-      id: createTileId(nx, ny),
-      name: template.name,
-      pool: template.pool,
-      x: nx,
-      y: ny,
-      doors: { ...template.doors },
-      visited: false,
-      cardResolved: false,
-    };
+    const draw = drawTileForFloor(tileDeck, active.floor, requiredDoor);
+    tileDeck = draw.deck;
+    if (!draw.template) {
+      log.push(
+        `${active.name} finds a bricked-up doorway to the ${direction}.`
+      );
+      return { ...state, log };
+    }
+    const newTile = templateToTile(draw.template, active.floor, nx, ny);
     tiles.push(newTile);
     log.push(
-      `${active.name} discovers ${newTile.name} (${newTile.pool} floor).`
+      `${active.name} discovers ${newTile.name} on the ${active.floor} floor.`
     );
   }
 
-  const targetTile = getTileAt(tiles, nx, ny)!;
-  const players = updatePlayer(state.players, state.activePlayerIndex, (p) => ({
+  const targetTile = getTileAt(tiles, active.floor, nx, ny)!;
+  const isNewDiscovery = !targetTile.visited;
+
+  let players = updatePlayer(state.players, state.activePlayerIndex, (p) => ({
     ...p,
     x: nx,
     y: ny,
-    ap: p.ap - 1,
+    ap: isNewDiscovery ? 0 : p.ap - 1,
   }));
 
-  if (!targetTile.visited) {
+  if (isNewDiscovery) {
     tiles = tiles.map((t) =>
       t.id === targetTile.id ? { ...t, visited: true } : t
     );
@@ -424,21 +437,75 @@ export function movePlayer(
     const card = drawCard(cardType);
     pendingCard = createPendingCard(card, targetTile.id);
     log.push(`A ${cardType} card is drawn: "${card.title}".`);
+    log.push(`${active.name} must resolve the room before moving again.`);
   }
 
-  return { ...state, players, tiles, log, pendingCard };
+  return {
+    ...state,
+    players,
+    tiles,
+    tileDeck,
+    log,
+    pendingCard,
+    viewFloor: active.floor,
+  };
+}
+
+export function useFloorTransition(state: GameState): GameState {
+  if (state.phase !== "exploration" || state.pendingCard) return state;
+
+  const active = getActivePlayer(state);
+  if (active.ap <= 0) return state;
+
+  const currentTile = getTileAt(state.tiles, active.floor, active.x, active.y);
+  if (!currentTile?.floorLink) return state;
+
+  const link = currentTile.floorLink;
+  const dest = getTileAt(state.tiles, link.floor, link.x, link.y);
+  if (!dest) return state;
+
+  const label =
+    currentTile.special === "coal-chute"
+      ? "slides down the Coal Chute"
+      : currentTile.special === "grand-staircase"
+        ? "climbs the Grand Staircase"
+        : currentTile.special === "upper-landing"
+          ? "descends to the Grand Staircase"
+          : `moves to the ${link.floor} floor`;
+
+  const players = updatePlayer(state.players, state.activePlayerIndex, (p) => ({
+    ...p,
+    floor: link.floor,
+    x: link.x,
+    y: link.y,
+    ap: p.ap - 1,
+  }));
+
+  return {
+    ...state,
+    players,
+    viewFloor: link.floor,
+    log: [...state.log, `${active.name} ${label} (1 AP).`],
+  };
 }
 
 export function endTurn(state: GameState): GameState {
   if (state.phase !== "exploration" || state.pendingCard) return state;
   const nextIndex = (state.activePlayerIndex + 1) % state.players.length;
-  const players = state.players.map((p, i) =>
-    i === nextIndex ? { ...p, ap: p.speed } : p
-  );
+  const players = beginTurnForPlayer(state.players, nextIndex);
+  const next = players[nextIndex];
   return {
     ...state,
     players,
     activePlayerIndex: nextIndex,
-    log: [...state.log, `${players[nextIndex].name} takes a fresh turn.`],
+    viewFloor: next.floor,
+    log: [...state.log, `${next.name} takes a fresh turn (${next.ap} AP).`],
   };
+}
+
+export function rollStatCheckForCard(state: GameState): { dice: number[]; total: number } {
+  const pending = state.pendingCard;
+  if (!pending?.card.stat) return rollBetrayalDice(1);
+  const active = getActivePlayer(state);
+  return rollBetrayalDice(active[pending.card.stat]);
 }
