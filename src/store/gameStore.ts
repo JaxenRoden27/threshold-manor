@@ -97,6 +97,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         puzzle,
         players: refreshed,
         activePlayerIndex: nextIndex,
+        viewFloor: refreshed[nextIndex].floor,
         phase,
         log,
       });

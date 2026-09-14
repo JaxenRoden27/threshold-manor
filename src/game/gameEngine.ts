@@ -367,15 +367,18 @@ export function resolveItemCard(
 export function dismissCard(state: GameState): GameState {
   const active = getActivePlayer(state);
   const nextIndex = (state.activePlayerIndex + 1) % state.players.length;
+  const players = beginTurnForPlayer(state.players, nextIndex);
+  const next = players[nextIndex];
 
   return {
     ...state,
-    players: beginTurnForPlayer(state.players, nextIndex),
+    players,
     pendingCard: null,
     activePlayerIndex: nextIndex,
+    viewFloor: next.floor,
     log: [
       ...state.log,
-      `${active.name} ends their turn. ${state.players[nextIndex].name} steps forward.`,
+      `${active.name} ends their turn. ${next.name} steps forward.`,
     ],
   };
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useGameStore } from "@/store/gameStore";
+import { useMultiplayerStore } from "@/store/multiplayerStore";
 import { useGameActions } from "@/hooks/useGameActions";
 import type { Direction, Floor, Player, Tile } from "@/game/types";
 import { DIRECTION_DELTA, FLOOR_LABELS } from "@/game/tileData";
@@ -63,6 +64,65 @@ export function GameBoard() {
     active?.ap > 0 &&
     active.floor === viewFloor &&
     canAct();
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      const keyToDirection: Record<string, Direction> = {
+        w: "north",
+        W: "north",
+        ArrowUp: "north",
+        s: "south",
+        S: "south",
+        ArrowDown: "south",
+        a: "west",
+        A: "west",
+        ArrowLeft: "west",
+        d: "east",
+        D: "east",
+        ArrowRight: "east",
+      };
+
+      const direction = keyToDirection[e.key];
+      if (!direction) return;
+
+      const state = useGameStore.getState();
+      const currentActive = state.players[state.activePlayerIndex];
+      const tile = state.tiles.find(
+        (t) =>
+          t.floor === currentActive?.floor &&
+          t.x === currentActive?.x &&
+          t.y === currentActive?.y
+      );
+
+      const { mode, canLocalAct } = useMultiplayerStore.getState();
+      const mayAct = mode === "local" || canLocalAct();
+
+      const movementAllowed =
+        state.phase === "exploration" &&
+        !state.pendingCard &&
+        currentActive?.ap > 0 &&
+        currentActive.floor === state.viewFloor &&
+        mayAct &&
+        tile?.doors[direction];
+
+      if (!movementAllowed) return;
+
+      e.preventDefault();
+      move(direction);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [move]);
 
   const currentTile = active
     ? tiles.find(
@@ -202,7 +262,7 @@ export function GameBoard() {
       {canMove && availableDirections.length > 0 && (
         <div className="rounded-lg border border-amber-700/40 bg-stone-900/80 p-3">
           <p className="mb-2 text-center text-xs font-medium text-amber-200">
-            Choose a doorway · 1 AP · new rooms end your move
+            Choose a doorway · WASD or arrows · 1 AP · new rooms end your move
           </p>
           <div className="mx-auto grid w-fit grid-cols-3 gap-2">
             <div />
