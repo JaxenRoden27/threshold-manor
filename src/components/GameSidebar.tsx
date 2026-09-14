@@ -20,10 +20,13 @@ export function GameSidebar() {
     players,
     activePlayerIndex,
     phase,
+    omensDrawn,
     cluesDiscovered,
     threatLevel,
     log,
     pendingCard,
+    haunt,
+    phase: gamePhase,
   } = useGameStore();
   const { endTurn, canAct } = useGameActions();
   const { mode, localPeerId, isMyTurn } = useMultiplayerStore();
@@ -38,20 +41,27 @@ export function GameSidebar() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-base text-amber-100">Status</CardTitle>
             <Badge
-              variant={phase === "crisis" ? "destructive" : "secondary"}
+              variant={
+                phase === "crisis" || phase === "HAUNT_ACTIVE"
+                  ? "destructive"
+                  : "secondary"
+              }
               className="capitalize"
             >
-              {phase}
+              {phase === "HAUNT_ACTIVE" ? "Haunt" : phase}
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div>
             <div className="mb-1 flex justify-between text-stone-400">
-              <span>Clues</span>
-              <span>{cluesDiscovered}</span>
+              <span>Omens</span>
+              <span>{omensDrawn || cluesDiscovered}</span>
             </div>
-            <Progress value={Math.min(100, cluesDiscovered * 20)} className="h-2" />
+            <Progress
+              value={Math.min(100, (omensDrawn || cluesDiscovered) * 20)}
+              className="h-2"
+            />
           </div>
           <div className="flex justify-between text-stone-300">
             <span>Threat Level</span>
@@ -125,7 +135,18 @@ export function GameSidebar() {
         </p>
       )}
 
-      {phase === "exploration" && !pendingCard && (
+      {haunt && gamePhase === "HAUNT_ACTIVE" && haunt.briefingDismissed && (
+        <Card className="border-rose-800 bg-rose-950/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-rose-300">Haunt Progress</CardTitle>
+          </CardHeader>
+          <CardContent className="text-xs text-stone-400">
+            {haunt.completedActionIds.length} haunt action(s) completed.
+          </CardContent>
+        </Card>
+      )}
+
+      {(phase === "exploration" || phase === "HAUNT_ACTIVE") && !pendingCard && (
         <Button
           variant="outline"
           onClick={endTurn}

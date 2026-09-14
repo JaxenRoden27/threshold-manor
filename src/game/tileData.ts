@@ -125,6 +125,7 @@ export function createStarterTiles(): Tile[] {
     const isStart = template.special === "entrance-hall";
     return {
       id: createTileId(floor, x, y),
+      templateId,
       name: template.name,
       pool: template.pool,
       floor,
@@ -188,6 +189,7 @@ export function templateToTile(
 ): Tile {
   return {
     id: createTileId(floor, x, y),
+    templateId: template.id,
     name: template.name,
     pool: template.pool,
     floor,

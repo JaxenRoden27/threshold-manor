@@ -1,4 +1,60 @@
-import type { Card, CardType } from "./types";
+import type { Card, ItemDefinition } from "./types";
+
+export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
+  "item-lantern": {
+    id: "item-lantern",
+    name: "Brass Lantern",
+    description: "Steadies the nerves of its bearer.",
+    passiveBonus: { sanity: 1 },
+    combatDefenseBonus: 1,
+  },
+  "item-crowbar": {
+    id: "item-crowbar",
+    name: "Iron Crowbar",
+    description: "A brutal lever in close quarters.",
+    passiveBonus: { might: 1 },
+    combatAttackStat: "might",
+    combatAttackBonus: 1,
+  },
+  "item-journal": {
+    id: "item-journal",
+    name: "Scholar's Journal",
+    description: "Occult notes sharpen the mind.",
+    passiveBonus: { knowledge: 1 },
+    combatAttackStat: "knowledge",
+    combatAttackBonus: 1,
+    mentalAttack: true,
+  },
+  "item-talisman": {
+    id: "item-talisman",
+    name: "Warded Talisman",
+    description: "Protective sigils repel psychic assault.",
+    passiveBonus: { sanity: 1 },
+    combatDefenseBonus: 2,
+  },
+  "item-boots": {
+    id: "item-boots",
+    name: "Swift Boots",
+    description: "Lightfooted escape from danger.",
+    passiveBonus: { speed: 1 },
+    combatDefenseBonus: 1,
+  },
+  "item-silver-dagger": {
+    id: "item-silver-dagger",
+    name: "Silver Dagger",
+    description: "Blessed edge against unholy foes.",
+    combatAttackStat: "might",
+    combatAttackBonus: 2,
+  },
+  "item-hex-charm": {
+    id: "item-hex-charm",
+    name: "Hex Charm",
+    description: "Channels malice through forbidden words.",
+    combatAttackStat: "knowledge",
+    combatAttackBonus: 2,
+    mentalAttack: true,
+  },
+};
 
 export const EVENT_CARDS: Card[] = [
   {
@@ -7,11 +63,12 @@ export const EVENT_CARDS: Card[] = [
     title: "Whispers in the Walls",
     description: "Cold voices coil around you. Test Sanity to keep your nerve.",
     stat: "sanity",
+    target: 4,
     difficulty: 4,
     successText: "You steady your breath. The whispers fade.",
     failureText: "The voices claw inward. Your mind frays.",
-    successEffect: { stat: "sanity", delta: 1 },
-    failureEffect: { stat: "sanity", delta: -2 },
+    onSuccess: { stat: "sanity", delta: 1 },
+    onFailure: { stat: "sanity", delta: -2 },
   },
   {
     id: "event-collapsing",
@@ -19,11 +76,12 @@ export const EVENT_CARDS: Card[] = [
     title: "Collapsing Beam",
     description: "Timber groans overhead. Test Might to hold the frame.",
     stat: "might",
+    target: 5,
     difficulty: 5,
     successText: "You brace the beam long enough for everyone to pass.",
     failureText: "Splinters rake your arms as the beam slams down.",
-    failureEffect: { stat: "might", delta: -2 },
-    successEffect: { stat: "might", delta: 1 },
+    onSuccess: { stat: "might", delta: 1 },
+    onFailure: { stat: "might", delta: -2 },
   },
   {
     id: "event-rushing",
@@ -31,11 +89,12 @@ export const EVENT_CARDS: Card[] = [
     title: "Something Rushes Past",
     description: "A blur darts through the dark. Test Speed to dodge it.",
     stat: "speed",
+    target: 4,
     difficulty: 4,
     successText: "You sidestep the rush and catch your balance.",
     failureText: "It clips you hard. You stumble, shaken.",
-    failureEffect: { stat: "speed", delta: -2 },
-    successEffect: { stat: "speed", delta: 1 },
+    onSuccess: { stat: "speed", delta: 1 },
+    onFailure: { stat: "speed", delta: -2 },
   },
   {
     id: "event-riddle",
@@ -43,11 +102,12 @@ export const EVENT_CARDS: Card[] = [
     title: "Cryptic Inscription",
     description: "Symbols crawl across the stone. Test Knowledge to decipher them.",
     stat: "knowledge",
+    target: 5,
     difficulty: 5,
     successText: "The pattern clicks. A hidden latch releases.",
     failureText: "The symbols swim. You misread a warning.",
-    successEffect: { stat: "knowledge", delta: 1 },
-    failureEffect: { stat: "knowledge", delta: -1 },
+    onSuccess: { stat: "knowledge", delta: 1 },
+    onFailure: { stat: "knowledge", delta: -1 },
   },
   {
     id: "event-shadow",
@@ -55,10 +115,11 @@ export const EVENT_CARDS: Card[] = [
     title: "Living Shadow",
     description: "A shadow peels from the wall. Test Might or lose ground.",
     stat: "might",
+    target: 4,
     difficulty: 4,
     successText: "You drive it back into the plaster.",
     failureText: "It batters you against the wainscoting.",
-    failureEffect: { stat: "might", delta: -1 },
+    onFailure: { stat: "might", delta: -1 },
   },
 ];
 
@@ -70,8 +131,8 @@ export const ITEM_CARDS: Card[] = [
     description: "A heavy lantern still holds oil. Its warmth steadies the group.",
     successText: "You pocket the lantern. Everyone gains a sliver of courage.",
     failureText: "",
-    successEffect: { stat: "sanity", delta: 1 },
-    itemReward: "Brass Lantern",
+    onSuccess: { stat: "sanity", delta: 1 },
+    itemReward: "item-lantern",
   },
   {
     id: "item-crowbar",
@@ -80,8 +141,8 @@ export const ITEM_CARDS: Card[] = [
     description: "Pried from a sealed crate. Useful—and reassuring.",
     successText: "The crowbar fits your grip. Might comes easier now.",
     failureText: "",
-    successEffect: { stat: "might", delta: 1 },
-    itemReward: "Iron Crowbar",
+    onSuccess: { stat: "might", delta: 1 },
+    itemReward: "item-crowbar",
   },
   {
     id: "item-journal",
@@ -90,8 +151,8 @@ export const ITEM_CARDS: Card[] = [
     description: "Notes on the house's occult history. Dense, but illuminating.",
     successText: "You skim a crucial passage. Knowledge sharpens.",
     failureText: "",
-    successEffect: { stat: "knowledge", delta: 2 },
-    itemReward: "Scholar's Journal",
+    onSuccess: { stat: "knowledge", delta: 2 },
+    itemReward: "item-journal",
   },
   {
     id: "item-talisman",
@@ -100,8 +161,8 @@ export const ITEM_CARDS: Card[] = [
     description: "A charm etched with protective sigils. It hums when held.",
     successText: "The talisman calms racing thoughts.",
     failureText: "",
-    successEffect: { stat: "sanity", delta: 2 },
-    itemReward: "Warded Talisman",
+    onSuccess: { stat: "sanity", delta: 2 },
+    itemReward: "item-talisman",
   },
   {
     id: "item-boots",
@@ -110,64 +171,80 @@ export const ITEM_CARDS: Card[] = [
     description: "Soft leather, barely worn. You could move like smoke in these.",
     successText: "The boots fit. Your stride lengthens.",
     failureText: "",
-    successEffect: { stat: "speed", delta: 2 },
-    itemReward: "Swift Boots",
+    onSuccess: { stat: "speed", delta: 2 },
+    itemReward: "item-boots",
   },
 ];
 
-export const CLUE_CARDS: Card[] = [
+export const OMEN_CARDS: Card[] = [
   {
-    id: "clue-sigil",
-    type: "clue",
+    id: "omen-sigil",
+    type: "omen",
     title: "Sigil Fragment",
-    description: "A carved sigil matches the ritual chamber sketches. The Crisis stirs.",
-    successText: "Another piece of the pattern. Threat Level rises.",
+    description: "A carved sigil matches the ritual chamber sketches. The Haunt stirs.",
+    successText: "Another piece of the pattern. The house watches.",
     failureText: "",
+    omenStatBonus: { stat: "knowledge", delta: 1 },
   },
   {
-    id: "clue-blood",
-    type: "clue",
+    id: "omen-blood",
+    type: "omen",
     title: "Bloodstained Map",
     description: "A floor plan marked in dried blood. Three rooms connect to a hidden core.",
     successText: "The map confirms your fears. The house is waking up.",
     failureText: "",
+    omenStatBonus: { stat: "sanity", delta: -1 },
   },
   {
-    id: "clue-diary",
-    type: "clue",
+    id: "omen-diary",
+    type: "omen",
     title: "Last Entry",
-    description: '"When the third seal breaks, redirect the ley lines—or we are lost."',
+    description: '"When the third seal breaks, one among you will turn."',
     successText: "The final warning. You feel the walls tighten.",
     failureText: "",
+    omenStatBonus: { stat: "sanity", delta: -1 },
   },
   {
-    id: "clue-mirror",
-    type: "clue",
+    id: "omen-mirror",
+    type: "omen",
     title: "Shattered Mirror",
     description: "Reflections show a room that is not there. The veil thins.",
     successText: "The mirror's secret burns behind your eyes.",
     failureText: "",
+    omenStatBonus: { stat: "knowledge", delta: 1 },
+  },
+  {
+    id: "omen-portrait",
+    type: "omen",
+    title: "Weeping Portrait",
+    description: "Oil paint runs like tears. Eyes follow your every step.",
+    successText: "The portrait's gaze lingers long after you look away.",
+    failureText: "",
+    omenStatBonus: { stat: "sanity", delta: -1 },
+  },
+  {
+    id: "omen-chalice",
+    type: "omen",
+    title: "Ceremonial Chalice",
+    description: "Dried blood cakes the rim. Something was offered here.",
+    successText: "The chalice hums with residual power.",
+    failureText: "",
+    omenStatBonus: { stat: "might", delta: 1 },
   },
 ];
 
-function pickRandom<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+export const CARD_BY_ID: Record<string, Card> = Object.fromEntries(
+  [...EVENT_CARDS, ...ITEM_CARDS, ...OMEN_CARDS].map((c) => [c.id, c])
+);
+
+export function getCardEffect(
+  card: Card,
+  success: boolean
+): Card["onSuccess"] | undefined {
+  if (success) return card.onSuccess ?? card.successEffect;
+  return card.onFailure ?? card.failureEffect;
 }
 
-export function drawCardType(): CardType {
-  const roll = Math.random();
-  if (roll < 0.45) return "event";
-  if (roll < 0.75) return "item";
-  return "clue";
-}
-
-export function drawCard(type: CardType): Card {
-  switch (type) {
-    case "event":
-      return { ...pickRandom(EVENT_CARDS) };
-    case "item":
-      return { ...pickRandom(ITEM_CARDS) };
-    case "clue":
-      return { ...pickRandom(CLUE_CARDS) };
-  }
+export function getCardTarget(card: Card): number {
+  return card.target ?? card.difficulty ?? 4;
 }

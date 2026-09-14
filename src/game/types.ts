@@ -1,9 +1,17 @@
 export type Stat = "might" | "speed" | "sanity" | "knowledge";
-export type Phase = "setup" | "exploration" | "crisis" | "victory" | "defeat";
+export type Phase =
+  | "setup"
+  | "exploration"
+  | "HAUNT_ACTIVE"
+  | "crisis"
+  | "victory"
+  | "defeat";
 export type Floor = "ground" | "upper" | "basement";
 export type TilePool = Floor;
 export type Direction = "north" | "south" | "east" | "west";
-export type CardType = "event" | "item" | "clue";
+export type CardType = "event" | "item" | "omen";
+export type DeckType = "events" | "items" | "omens";
+export type TraitorSelection = "random" | "lowest-sanity" | "highest-knowledge";
 
 export type TileSpecial =
   | "entrance-hall"
@@ -37,6 +45,7 @@ export interface Player {
   floor: Floor;
   x: number;
   y: number;
+  isTraitor: boolean;
 }
 
 export interface Doors {
@@ -54,6 +63,7 @@ export interface FloorLink {
 
 export interface Tile {
   id: string;
+  templateId: string;
   name: string;
   pool: TilePool;
   floor: Floor;
@@ -66,23 +76,55 @@ export interface Tile {
   floorLink?: FloorLink;
 }
 
+export interface CardEffect {
+  stat: Stat;
+  delta: number;
+}
+
 export interface Card {
   id: string;
   type: CardType;
   title: string;
   description: string;
   stat?: Stat;
+  target?: number;
   difficulty?: number;
   successText: string;
   failureText: string;
-  successEffect?: { stat: Stat; delta: number };
-  failureEffect?: { stat: Stat; delta: number };
+  onSuccess?: CardEffect;
+  onFailure?: CardEffect;
+  /** @deprecated Use onSuccess */
+  successEffect?: CardEffect;
+  /** @deprecated Use onFailure */
+  failureEffect?: CardEffect;
   itemReward?: string;
+  omenStatBonus?: CardEffect;
+}
+
+export interface ItemDefinition {
+  id: string;
+  name: string;
+  description: string;
+  passiveBonus?: Partial<Record<Stat, number>>;
+  combatAttackStat?: Stat;
+  combatAttackBonus?: number;
+  combatDefenseBonus?: number;
+  mentalAttack?: boolean;
+}
+
+export interface CardDecks {
+  eventsDeck: string[];
+  itemsDeck: string[];
+  omensDeck: string[];
+  eventsDiscard: string[];
+  itemsDiscard: string[];
+  omensDiscard: string[];
 }
 
 export type CardRollPhase =
   | "none"
   | "await-stat"
+  | "await-haunt"
   | "await-threat"
   | "await-crisis"
   | "complete";
@@ -93,10 +135,72 @@ export interface PendingCard {
   resolved: boolean;
   rollPhase: CardRollPhase;
   statDice?: number[];
+  hauntDice?: number[];
   threatDice?: number[];
   crisisDice?: number[];
   roll?: number;
   success?: boolean;
+}
+
+export interface HauntAction {
+  id: string;
+  roomTemplateId: string;
+  label: string;
+  description: string;
+  stat: Stat;
+  minStat: number;
+  apCost: number;
+  survivorOnly?: boolean;
+  traitorOnly?: boolean;
+}
+
+export interface MonsterDefinition {
+  id: string;
+  name: string;
+  might: number;
+  sanity: number;
+  hp: number;
+}
+
+export interface HauntScenario {
+  id: string;
+  name: string;
+  traitorSelection: TraitorSelection;
+  survivorGoal: string;
+  traitorGoal: string;
+  survivorWinCondition: string;
+  traitorWinCondition: string;
+  secretsOfSurvival: string[];
+  traitorsTome: string[];
+  hauntActions: HauntAction[];
+  monster?: MonsterDefinition;
+}
+
+export interface HauntState {
+  scenarioId: string;
+  omenId: string;
+  roomTemplateId: string;
+  traitorPlayerId: string;
+  completedActionIds: string[];
+  monsterHp?: number;
+  briefingDismissed: boolean;
+}
+
+export type CombatPhase = "select-target" | "rolling" | "resolved";
+
+export interface CombatState {
+  attackerId: string;
+  defenderId: string;
+  defenderType: "player" | "monster";
+  attackStat: Stat;
+  defenseStat: Stat;
+  phase: CombatPhase;
+  attackerDice?: number[];
+  defenderDice?: number[];
+  attackerTotal?: number;
+  defenderTotal?: number;
+  damage?: number;
+  log: string[];
 }
 
 export interface PuzzleState {
@@ -113,6 +217,8 @@ export interface GameState {
   activePlayerIndex: number;
   tiles: Tile[];
   viewFloor: Floor;
+  omensDrawn: number;
+  /** @deprecated Use omensDrawn */
   cluesDiscovered: number;
   threatLevel: number;
   pendingCard: PendingCard | null;
@@ -120,4 +226,8 @@ export interface GameState {
   puzzle: PuzzleState | null;
   selectedPlayerCount: number;
   tileDeck: string[];
+  cardDecks: CardDecks;
+  haunt: HauntState | null;
+  combat: CombatState | null;
+  lastOmenRoomTemplateId: string | null;
 }

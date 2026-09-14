@@ -8,7 +8,9 @@ import { LobbyScreen } from "./LobbyScreen";
 import { GameBoard } from "./GameBoard";
 import { GameSidebar } from "./GameSidebar";
 import { CardModal } from "./CardModal";
+import { CombatModal } from "./CombatModal";
 import { CrisisOverlay } from "./CrisisOverlay";
+import { HauntBriefingModal } from "./HauntBriefingModal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -91,6 +93,8 @@ export function GameApp() {
       </div>
 
       <CardModal />
+      <HauntBriefingModal />
+      <CombatModal />
       <CrisisOverlay />
     </main>
   );

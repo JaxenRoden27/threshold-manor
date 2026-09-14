@@ -26,8 +26,9 @@ export function useGameActions() {
         case "roll-stat":
           store.rollStatCheck(action.dice);
           break;
+        case "roll-haunt":
         case "roll-crisis":
-          store.rollCrisisRoll(action.dice);
+          store.rollHauntRoll(action.dice);
           break;
         case "dismiss-card":
           store.dismissPendingCard();
@@ -40,6 +41,25 @@ export function useGameActions() {
           break;
         case "set-view-floor":
           store.setViewFloor(action.floor);
+          break;
+        case "dismiss-haunt-briefing":
+          store.dismissHauntBriefing();
+          break;
+        case "haunt-action":
+          store.performHauntAction(action.actionId);
+          break;
+        case "start-combat":
+          store.initiateCombat(
+            action.defenderId,
+            action.defenderType,
+            action.mental
+          );
+          break;
+        case "roll-combat":
+          store.rollCombat();
+          break;
+        case "dismiss-combat":
+          store.dismissCombat();
           break;
       }
       return;
@@ -59,14 +79,29 @@ export function useGameActions() {
       guardDispatch({ kind: "resolve-item" }, false),
     rollStatCheck: (dice: number[]) =>
       guardDispatch({ kind: "roll-stat", dice }),
+    rollHauntRoll: (dice: number[]) =>
+      guardDispatch({ kind: "roll-haunt", dice }),
     rollCrisisRoll: (dice: number[]) =>
-      guardDispatch({ kind: "roll-crisis", dice }),
+      guardDispatch({ kind: "roll-haunt", dice }),
     dismissPendingCard: () =>
       guardDispatch({ kind: "dismiss-card" }),
     endTurn: () => guardDispatch({ kind: "end-turn" }),
     rotatePuzzleSigil: (index: number) =>
       guardDispatch({ kind: "rotate-sigil", index }),
+    dismissHauntBriefing: () =>
+      guardDispatch({ kind: "dismiss-haunt-briefing" }, false),
+    performHauntAction: (actionId: string) =>
+      guardDispatch({ kind: "haunt-action", actionId }),
+    initiateCombat: (
+      defenderId: string,
+      defenderType: "player" | "monster",
+      mental = false
+    ) =>
+      guardDispatch({ kind: "start-combat", defenderId, defenderType, mental }),
+    rollCombat: () => guardDispatch({ kind: "roll-combat" }),
+    dismissCombat: () => guardDispatch({ kind: "dismiss-combat" }, false),
     canAct: () => mode === "local" || canLocalAct(),
     inputBlocked: () => Boolean(useGameStore.getState().pendingCard),
+    combatBlocked: () => Boolean(useGameStore.getState().combat),
   };
 }

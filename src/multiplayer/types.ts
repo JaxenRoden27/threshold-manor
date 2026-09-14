@@ -26,11 +26,17 @@ export type GameAction =
   | { kind: "use-floor-transition" }
   | { kind: "resolve-item" }
   | { kind: "roll-stat"; dice: number[] }
+  | { kind: "roll-haunt"; dice: number[] }
   | { kind: "roll-crisis"; dice: number[] }
   | { kind: "dismiss-card" }
   | { kind: "end-turn" }
   | { kind: "rotate-sigil"; index: number }
-  | { kind: "set-view-floor"; floor: "ground" | "upper" | "basement" };
+  | { kind: "set-view-floor"; floor: "ground" | "upper" | "basement" }
+  | { kind: "dismiss-haunt-briefing" }
+  | { kind: "haunt-action"; actionId: string }
+  | { kind: "start-combat"; defenderId: string; defenderType: "player" | "monster"; mental?: boolean }
+  | { kind: "roll-combat" }
+  | { kind: "dismiss-combat" };
 
 export type NetMessage =
   | { type: "lobby-update"; lobby: LobbyState }

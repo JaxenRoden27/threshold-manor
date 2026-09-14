@@ -25,8 +25,13 @@ export function checkStatSuccess(total: number, difficulty: number): boolean {
   return total >= difficulty;
 }
 
+export function checkHauntTrigger(hauntRollTotal: number, omensDrawn: number): boolean {
+  return hauntRollTotal < omensDrawn;
+}
+
+/** @deprecated Use checkHauntTrigger */
 export function checkCrisisTrigger(crisisRollTotal: number, cluesDiscovered: number): boolean {
-  return crisisRollTotal < cluesDiscovered;
+  return checkHauntTrigger(crisisRollTotal, cluesDiscovered);
 }
 
 export function betrayalFaceLabel(value: number): string {

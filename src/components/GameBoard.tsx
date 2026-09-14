@@ -7,6 +7,7 @@ import { useGameActions } from "@/hooks/useGameActions";
 import type { Direction, Floor, Player, Tile } from "@/game/types";
 import { DIRECTION_DELTA, FLOOR_LABELS } from "@/game/tileData";
 import { Button } from "@/components/ui/button";
+import { HauntActionsPanel } from "@/components/HauntActionsPanel";
 
 const TILE_SIZE = 88;
 const MAP_PADDING = 40;
@@ -34,8 +35,14 @@ export function GameBoard() {
     pendingCard,
     viewFloor,
   } = useGameStore();
-  const { move, useFloorTransition, setViewFloor, canAct, inputBlocked } =
-    useGameActions();
+  const {
+    move,
+    useFloorTransition,
+    setViewFloor,
+    canAct,
+    inputBlocked,
+    combatBlocked,
+  } = useGameActions();
 
   const active = players[activePlayerIndex];
 
@@ -59,8 +66,9 @@ export function GameBoard() {
   }, [floorTiles]);
 
   const canMove =
-    phase === "exploration" &&
+    (phase === "exploration" || phase === "HAUNT_ACTIVE") &&
     !inputBlocked() &&
+    !combatBlocked() &&
     active?.ap > 0 &&
     active.floor === viewFloor &&
     canAct();
@@ -107,8 +115,9 @@ export function GameBoard() {
       const mayAct = mode === "local" || canLocalAct();
 
       const movementAllowed =
-        state.phase === "exploration" &&
+        (state.phase === "exploration" || state.phase === "HAUNT_ACTIVE") &&
         !state.pendingCard &&
+        !state.combat &&
         currentActive?.ap > 0 &&
         currentActive.floor === state.viewFloor &&
         mayAct &&
@@ -315,6 +324,8 @@ export function GameBoard() {
           </div>
         </div>
       )}
+
+      <HauntActionsPanel />
 
       {inputBlocked() && (
         <p className="text-center text-xs text-amber-400/80">

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import {
-  applyCrisisRoll,
+  applyHauntRoll,
   applyStatRoll,
   createInitialState,
   dismissCard,
@@ -12,6 +12,16 @@ import {
   startGame,
   useFloorTransition,
 } from "@/game/gameEngine";
+import {
+  completeHauntAction,
+  dismissHauntBriefing,
+} from "@/game/hauntEngine";
+import {
+  dismissCombat,
+  resolveCombatRoll,
+  rollCombatForActive,
+  startCombat,
+} from "@/game/combatEngine";
 import { rotateSigil, isPuzzleFailed } from "@/game/puzzleEngine";
 import type { Direction, Floor, GameState, Phase } from "@/game/types";
 
@@ -23,10 +33,15 @@ interface GameStore extends GameState {
   useFloorTransition: () => void;
   resolveItemCard: () => void;
   rollStatCheck: (dice: number[]) => void;
-  rollCrisisRoll: (dice: number[]) => void;
+  rollHauntRoll: (dice: number[]) => void;
   dismissPendingCard: () => void;
   endTurn: () => void;
   rotatePuzzleSigil: (index: number) => void;
+  dismissHauntBriefing: () => void;
+  performHauntAction: (actionId: string) => void;
+  initiateCombat: (defenderId: string, defenderType: "player" | "monster", mental?: boolean) => void;
+  rollCombat: () => void;
+  dismissCombat: () => void;
   resetGame: () => void;
 }
 
@@ -56,15 +71,32 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set(applyStatRoll(s, s.pendingCard, dice));
   },
 
-  rollCrisisRoll: (dice) => {
+  rollHauntRoll: (dice) => {
     const s = get();
-    if (!s.pendingCard || s.pendingCard.rollPhase !== "await-crisis") return;
-    set(applyCrisisRoll(s, s.pendingCard, dice));
+    if (!s.pendingCard || s.pendingCard.rollPhase !== "await-haunt") return;
+    set(applyHauntRoll(s, s.pendingCard, dice));
   },
 
   dismissPendingCard: () => set((s) => dismissCard(s)),
 
   endTurn: () => set((s) => endTurn(s)),
+
+  dismissHauntBriefing: () => set((s) => dismissHauntBriefing(s)),
+
+  performHauntAction: (actionId) =>
+    set((s) => completeHauntAction(s, actionId)),
+
+  initiateCombat: (defenderId, defenderType, mental = false) =>
+    set((s) => startCombat(s, defenderId, defenderType, mental)),
+
+  rollCombat: () => {
+    const s = get();
+    if (!s.combat || s.combat.phase !== "rolling") return;
+    const { attackerDice, defenderDice } = rollCombatForActive(s);
+    set(resolveCombatRoll(s, attackerDice, defenderDice));
+  },
+
+  dismissCombat: () => set((s) => dismissCombat(s)),
 
   rotatePuzzleSigil: (index) => {
     const s = get();

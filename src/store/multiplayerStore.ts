@@ -60,8 +60,9 @@ function applyHostAction(action: GameAction, fromPeerId: string) {
     case "roll-stat":
       useGameStore.getState().rollStatCheck(action.dice);
       break;
+    case "roll-haunt":
     case "roll-crisis":
-      useGameStore.getState().rollCrisisRoll(action.dice);
+      useGameStore.getState().rollHauntRoll(action.dice);
       break;
     case "use-floor-transition":
       useGameStore.getState().useFloorTransition();
@@ -77,6 +78,25 @@ function applyHostAction(action: GameAction, fromPeerId: string) {
       break;
     case "rotate-sigil":
       useGameStore.getState().rotatePuzzleSigil(action.index);
+      break;
+    case "dismiss-haunt-briefing":
+      useGameStore.getState().dismissHauntBriefing();
+      break;
+    case "haunt-action":
+      useGameStore.getState().performHauntAction(action.actionId);
+      break;
+    case "start-combat":
+      useGameStore.getState().initiateCombat(
+        action.defenderId,
+        action.defenderType,
+        action.mental
+      );
+      break;
+    case "roll-combat":
+      useGameStore.getState().rollCombat();
+      break;
+    case "dismiss-combat":
+      useGameStore.getState().dismissCombat();
       break;
   }
 }

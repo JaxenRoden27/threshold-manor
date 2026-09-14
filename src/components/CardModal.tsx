@@ -2,6 +2,7 @@
 
 import { useGameStore } from "@/store/gameStore";
 import { useGameActions } from "@/hooks/useGameActions";
+import { getCardTarget } from "@/game/cardData";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,11 +17,11 @@ import { DiceRollPanel } from "@/components/DiceRollPanel";
 import { Die } from "@/components/Die";
 
 export function CardModal() {
-  const { pendingCard, players, activePlayerIndex, cluesDiscovered } =
+  const { pendingCard, players, activePlayerIndex, omensDrawn } =
     useGameStore();
   const {
     rollStatCheck,
-    rollCrisisRoll,
+    rollHauntRoll,
     dismissPendingCard,
     resolveItemCard,
     canAct,
@@ -38,11 +39,14 @@ export function CardModal() {
   const typeColors: Record<string, string> = {
     event: "bg-orange-900 text-orange-200",
     item: "bg-sky-900 text-sky-200",
+    omen: "bg-rose-900 text-rose-200",
     clue: "bg-rose-900 text-rose-200",
   };
 
   const statDiceCount =
     card.stat && active ? active[card.stat] : 1;
+
+  const nextOmenCount = omensDrawn + 1;
 
   return (
     <Dialog open={open} onOpenChange={() => resolved && dismissPendingCard()}>
@@ -74,10 +78,10 @@ export function CardModal() {
           <DiceRollPanel
             config={{
               diceCount: statDiceCount,
-              target: card.difficulty,
-              targetLabel: "difficulty",
+              target: getCardTarget(card),
+              targetLabel: "target",
               title: `${active?.name} tests ${card.stat}`,
-              description: `Roll ${statDiceCount} Betrayal dice (${card.stat}). Sum must meet or beat the difficulty.`,
+              description: `Roll ${statDiceCount} Betrayal dice (${card.stat}). Sum must meet or beat the target.`,
             }}
             canRoll={canRoll}
             waitingLabel={`Waiting for ${active?.name} to roll…`}
@@ -105,31 +109,34 @@ export function CardModal() {
           </div>
         )}
 
-        {card.type === "clue" && pendingCard?.rollPhase === "await-crisis" && (
+        {card.type === "omen" && pendingCard?.rollPhase === "await-haunt" && (
           <DiceRollPanel
             config={{
               diceCount: 6,
-              crisisBelow: cluesDiscovered + 1,
-              title: "Crisis Roll",
+              crisisBelow: nextOmenCount,
+              title: "Haunt Roll",
               description:
-                "Roll 6 Betrayal dice. If the sum is below your new Clue count, the Crisis begins.",
+                "Roll 6 Betrayal dice immediately. If the sum is below your new Omen count, the Haunt begins.",
               variant: "threat",
             }}
             canRoll={canRoll}
-            waitingLabel={`Waiting for ${active?.name} to roll the Crisis dice…`}
-            onComplete={(dice) => rollCrisisRoll(dice)}
+            waitingLabel={`Waiting for ${active?.name} to roll the Haunt dice…`}
+            onComplete={(dice) => rollHauntRoll(dice)}
           />
         )}
 
-        {card.type === "clue" && resolved && pendingCard?.crisisDice && (
+        {card.type === "omen" && resolved && pendingCard?.hauntDice && (
           <div className="space-y-3">
             <div className="flex flex-wrap justify-center gap-2">
-              {pendingCard.crisisDice.map((face, i) => (
+              {pendingCard.hauntDice.map((face, i) => (
                 <Die key={i} value={face} size="md" variant="threat" />
               ))}
             </div>
             <p className="text-center text-sm text-amber-300">
-              Crisis Roll total: {pendingCard.roll}
+              Haunt Roll total: {pendingCard.roll}
+              {pendingCard.success
+                ? " — the house holds."
+                : " — the Haunt begins!"}
             </p>
           </div>
         )}
