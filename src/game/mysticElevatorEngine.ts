@@ -1,4 +1,4 @@
-import { betrayalFaceLabel, rollBetrayalDice } from "./diceEngine";
+import { betrayalFaceLabel } from "./diceEngine";
 import { DIRECTION_DELTA, OPPOSITE, createTileId } from "./tileData";
 import type { Direction, Floor, GameState, Player, Tile, TileSymbol } from "./types";
 
@@ -18,16 +18,17 @@ export interface ElevatorPlacement {
   door: Direction;
 }
 
+export function isMysticElevatorTile(tile: Tile): boolean {
+  return (
+    tile.special === "mystic-elevator" || tile.templateId === "mystic-elevator"
+  );
+}
+
 export function elevatorFloorFromRoll(total: number): Floor | "pick" {
   if (total <= 1) return "basement";
   if (total === 2) return "ground";
   if (total === 3) return "upper";
   return "pick";
-}
-
-export function rollElevatorDice(): { dice: number[]; total: number } {
-  const { dice, total } = rollBetrayalDice(2);
-  return { dice, total };
 }
 
 export function buildElevatorTile(
@@ -54,11 +55,13 @@ export function buildElevatorTile(
   };
 }
 
+/** Open doorways = room door facing an empty cell on the given floor. */
 export function findOpenDoorways(tiles: Tile[], floor: Floor): OpenDoorway[] {
   const floorTiles = tiles.filter((t) => t.floor === floor);
   const open: OpenDoorway[] = [];
 
   for (const tile of floorTiles) {
+    if (isMysticElevatorTile(tile)) continue;
     for (const dir of ELEVATOR_DOOR_DIRS) {
       if (!tile.doors[dir]) continue;
       const { dx, dy } = DIRECTION_DELTA[dir];
@@ -102,19 +105,36 @@ export function playersOnTile(
   return players.filter((p) => p.floor === floor && p.x === x && p.y === y);
 }
 
-/** True when this move onto the elevator is the first movement of the turn. */
-export function isFirstMoveOfTurn(player: Player): boolean {
-  return player.ap === player.speed;
+function resolveSourceElevator(
+  state: GameState
+): Tile | undefined {
+  const pending = state.pendingElevator;
+  if (!pending) return undefined;
+
+  const byId = state.tiles.find((t) => t.id === pending.sourceTileId);
+  if (byId && isMysticElevatorTile(byId)) return byId;
+
+  return state.tiles.find(
+    (t) =>
+      isMysticElevatorTile(t) &&
+      t.floor === pending.sourceFloor &&
+      t.x === pending.sourceX &&
+      t.y === pending.sourceY
+  );
 }
 
-export function shouldTriggerElevatorOnEnter(
-  player: Player,
-  tile: Tile
-): boolean {
-  return (
-    (tile.special === "mystic-elevator" ||
-      tile.templateId === "mystic-elevator") &&
-    isFirstMoveOfTurn(player)
+function removeElevatorAt(
+  tiles: Tile[],
+  source: Tile
+): Tile[] {
+  return tiles.filter(
+    (t) =>
+      !(
+        isMysticElevatorTile(t) &&
+        t.floor === source.floor &&
+        t.x === source.x &&
+        t.y === source.y
+      )
   );
 }
 
@@ -123,28 +143,22 @@ export function beginElevatorSequence(
   elevatorTile: Tile,
   isTraitor: boolean
 ): GameState {
-  if (isTraitor) {
-    return {
-      ...state,
-      pendingElevator: {
-        sourceTileId: elevatorTile.id,
-        phase: "pick-floor",
-      },
-      log: [
-        ...state.log,
-        "The Mystic Elevator hums — the Traitor chooses a destination.",
-      ],
-    };
-  }
+  const pending = {
+    sourceTileId: elevatorTile.id,
+    sourceFloor: elevatorTile.floor,
+    sourceX: elevatorTile.x,
+    sourceY: elevatorTile.y,
+    phase: isTraitor ? ("pick-floor" as const) : ("roll" as const),
+  };
+
   return {
     ...state,
-    pendingElevator: {
-      sourceTileId: elevatorTile.id,
-      phase: "roll",
-    },
+    pendingElevator: pending,
     log: [
       ...state.log,
-      "The Mystic Elevator shudders — roll 2 dice to choose a floor.",
+      isTraitor
+        ? "The Mystic Elevator hums — the Traitor chooses a destination."
+        : "The Mystic Elevator shudders — roll 2 dice to choose a floor.",
     ],
   };
 }
@@ -185,12 +199,7 @@ export function completeElevatorFloorPick(
 ): GameState {
   const pending = state.pendingElevator;
   if (!pending || pending.phase !== "pick-floor") return state;
-  return executeElevatorMove(
-    state,
-    floor,
-    pending.dice,
-    pending.total
-  );
+  return executeElevatorMove(state, floor, pending.dice, pending.total);
 }
 
 export function executeElevatorMove(
@@ -202,19 +211,14 @@ export function executeElevatorMove(
   const pending = state.pendingElevator;
   if (!pending) return state;
 
-  const sourceTile = state.tiles.find((t) => t.id === pending.sourceTileId);
+  const sourceTile = resolveSourceElevator(state);
   if (!sourceTile) {
-    return { ...state, pendingElevator: null };
-  }
-
-  const placement = pickElevatorPlacement(state.tiles, targetFloor);
-  if (!placement) {
     return {
       ...state,
       pendingElevator: null,
       log: [
         ...state.log,
-        `The Mystic Elevator groans — no open doorways on ${targetFloor}. It stays put.`,
+        "The Mystic Elevator vanishes from the map before it can relocate.",
       ],
     };
   }
@@ -226,15 +230,49 @@ export function executeElevatorMove(
     sourceTile.y
   );
 
-  let tiles = state.tiles.filter((t) => t.id !== sourceTile.id);
+  const tilesWithoutElevator = removeElevatorAt(state.tiles, sourceTile);
+  const placement = pickElevatorPlacement(tilesWithoutElevator, targetFloor);
+
+  if (!placement) {
+    const restored = [...tilesWithoutElevator, sourceTile];
+    return {
+      ...state,
+      tiles: restored,
+      pendingElevator: null,
+      log: [
+        ...state.log,
+        `The Mystic Elevator groans — no open doorways on the ${targetFloor} floor. It stays put.`,
+      ],
+    };
+  }
+
+  const stillBlocked = tilesWithoutElevator.some(
+    (t) =>
+      t.floor === placement.floor &&
+      t.x === placement.x &&
+      t.y === placement.y
+  );
+  if (stillBlocked) {
+    const restored = [...tilesWithoutElevator, sourceTile];
+    return {
+      ...state,
+      tiles: restored,
+      pendingElevator: null,
+      log: [
+        ...state.log,
+        "The Mystic Elevator cannot dock — the chosen doorway is blocked.",
+      ],
+    };
+  }
+
   const newElevator = buildElevatorTile(
     placement.floor,
     placement.x,
     placement.y,
     placement.door
   );
-  tiles.push(newElevator);
 
+  const tiles = [...tilesWithoutElevator, newElevator];
   const occupantIds = new Set(occupants.map((p) => p.id));
   const players = state.players.map((p) =>
     occupantIds.has(p.id)
@@ -242,6 +280,7 @@ export function executeElevatorMove(
       : p
   );
 
+  const activeAfter = players[state.activePlayerIndex];
   const floorLabel =
     targetFloor === "basement"
       ? "Basement"
@@ -258,7 +297,7 @@ export function executeElevatorMove(
     ...state,
     tiles,
     players,
-    viewFloor: placement.floor,
+    viewFloor: activeAfter.floor,
     pendingElevator: null,
     log: [
       ...state.log,
@@ -267,12 +306,16 @@ export function executeElevatorMove(
   };
 }
 
-/** Manual activation when already standing in the elevator (not first move). */
+/** Re-trigger while standing inside the elevator without leaving first. */
 export function activateElevatorFromRoom(state: GameState): GameState {
+  if (state.pendingElevator) return state;
   const active = state.players[state.activePlayerIndex];
   const tile = state.tiles.find(
     (t) =>
-      t.floor === active.floor && t.x === active.x && t.y === active.y
+      t.floor === active.floor &&
+      t.x === active.x &&
+      t.y === active.y &&
+      isMysticElevatorTile(t)
   );
   if (!tile) return state;
   return beginElevatorSequence(state, tile, active.isTraitor);

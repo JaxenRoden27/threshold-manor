@@ -303,6 +303,9 @@ export interface GameState {
   pendingVaultLockpick: string | null;
   pendingElevator: {
     sourceTileId: string;
+    sourceFloor: Floor;
+    sourceX: number;
+    sourceY: number;
     phase: "roll" | "pick-floor";
     dice?: number[];
     total?: number;

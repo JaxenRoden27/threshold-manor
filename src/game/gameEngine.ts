@@ -23,7 +23,7 @@ import {
   beginElevatorSequence,
   completeElevatorFloorPick,
   completeElevatorRoll,
-  shouldTriggerElevatorOnEnter,
+  isMysticElevatorTile,
 } from "./mysticElevatorEngine";
 import {
   barrierFailMessage,
@@ -591,16 +591,26 @@ export function movePlayer(
   } else if (targetTile.special === "collapsed-room") {
     next = handleCollapsedRoomEnter(next, state.activePlayerIndex, targetTile);
     players = next.players;
-  } else if (shouldTriggerElevatorOnEnter(active, targetTile)) {
+  } else if (isMysticElevatorTile(targetTile)) {
+    const elevatorTile =
+      next.tiles.find((t) => t.id === targetTile.id) ?? targetTile;
     next = beginElevatorSequence(
       next,
-      targetTile,
-      players[state.activePlayerIndex].isTraitor
+      elevatorTile,
+      next.players[state.activePlayerIndex].isTraitor
     );
   }
 
-  const moved = players[state.activePlayerIndex];
-  next = maybeTriggerHauntCombat(next, moved, moved.floor, moved.x, moved.y);
+  if (!next.pendingElevator) {
+    const moved = next.players[next.activePlayerIndex];
+    next = maybeTriggerHauntCombat(
+      next,
+      moved,
+      moved.floor,
+      moved.x,
+      moved.y
+    );
+  }
   return next;
 }
 
@@ -628,7 +638,8 @@ export function activateElevator(state: GameState): GameState {
     !movablePhases.includes(state.phase) ||
     state.pendingCard ||
     state.combat ||
-    state.pendingElevator
+    state.pendingElevator ||
+    state.pendingVaultLockpick
   )
     return state;
   return activateElevatorFromRoom(state);
