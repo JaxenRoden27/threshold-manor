@@ -20,6 +20,9 @@ export function useGameActions() {
         case "use-floor-transition":
           store.useFloorTransition();
           break;
+        case "activate-elevator":
+          store.activateElevator();
+          break;
         case "complete-elevator":
           store.completeElevatorTransition(action.dice, action.floorPick);
           break;
@@ -87,6 +90,7 @@ export function useGameActions() {
       guardDispatch({ kind: "move", direction }),
     useFloorTransition: () =>
       guardDispatch({ kind: "use-floor-transition" }),
+    activateElevator: () => guardDispatch({ kind: "activate-elevator" }),
     completeElevatorTransition: (dice?: number[], floorPick?: Floor) =>
       guardDispatch({ kind: "complete-elevator", dice, floorPick }),
     setViewFloor: (floor: Floor) =>
@@ -130,7 +134,8 @@ export function useGameActions() {
         state().pendingCard ||
           state().combat ||
           state().pendingTransition ||
-          state().pendingVaultLockpick
+          state().pendingVaultLockpick ||
+          state().pendingElevator
       ),
   };
 }

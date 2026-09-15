@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  activateElevator,
   applyHauntRoll,
   applyStatRoll,
   attemptVaultLockpick,
@@ -35,6 +36,7 @@ interface GameStore extends GameState {
   setViewFloor: (floor: Floor) => void;
   move: (direction: Direction) => void;
   useFloorTransition: () => void;
+  activateElevator: () => void;
   completeElevatorTransition: (dice?: number[], floorPick?: Floor) => void;
   resolveItemCard: () => void;
   rollStatCheck: (dice: number[]) => void;
@@ -65,6 +67,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
   move: (direction) => set((s) => movePlayer(s, direction)),
 
   useFloorTransition: () => set((s) => useFloorTransition(s)),
+
+  activateElevator: () => set((s) => activateElevator(s)),
 
   completeElevatorTransition: (dice, floorPick) =>
     set((s) => completeElevatorTransition(s, dice, floorPick)),

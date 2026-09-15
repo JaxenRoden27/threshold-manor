@@ -44,6 +44,7 @@ export function GameBoard() {
   const {
     move,
     useFloorTransition,
+    activateElevator,
     setViewFloor,
     endTurn,
     canAct,
@@ -114,7 +115,8 @@ export function GameBoard() {
         state.pendingCard ||
         state.combat ||
         state.pendingTransition ||
-        state.pendingVaultLockpick;
+        state.pendingVaultLockpick ||
+        state.pendingElevator;
 
       if (
         (e.key === " " || e.code === "Space") &&
@@ -184,6 +186,16 @@ export function GameBoard() {
 
   const canUseTransition =
     canMove && Boolean(currentTile?.floorLink) && active?.floor === viewFloor;
+
+  const onElevator =
+    currentTile?.special === "mystic-elevator" ||
+    currentTile?.templateId === "mystic-elevator";
+  const canActivateElevator =
+    (phase === "exploration" || phase === "HAUNT_ACTIVE") &&
+    onElevator &&
+    !modalBlocked() &&
+    active?.floor === viewFloor &&
+    canAct();
 
   const width =
     (bounds.maxX - bounds.minX + 1) * TILE_RENDER_SIZE + MAP_PADDING * 2;
@@ -278,15 +290,21 @@ export function GameBoard() {
           className="w-full border-violet-600 text-violet-200"
           onClick={useFloorTransition}
         >
-          {currentTile?.special === "coal-chute"
-            ? "Slide down Coal Chute (free)"
-            : currentTile?.special === "grand-staircase"
-              ? "Climb to Upper Landing (1 AP)"
-              : currentTile?.special === "upper-landing"
-                ? "Descend to Grand Staircase (1 AP)"
-                : currentTile?.special === "mystic-elevator"
-                  ? "Ride Mystic Elevator (1 AP)"
-                  : "Use floor transition (1 AP)"}
+          {currentTile?.special === "grand-staircase"
+            ? "Climb to Upper Landing (1 AP)"
+            : currentTile?.special === "upper-landing"
+              ? "Descend to Grand Staircase (1 AP)"
+              : "Use floor transition (1 AP)"}
+        </Button>
+      )}
+
+      {canActivateElevator && (
+        <Button
+          variant="outline"
+          className="w-full border-violet-500 text-violet-200"
+          onClick={activateElevator}
+        >
+          Activate Mystic Elevator
         </Button>
       )}
 

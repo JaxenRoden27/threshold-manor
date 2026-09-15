@@ -38,6 +38,7 @@ export type GameAction =
   | { kind: "roll-combat" }
   | { kind: "allocate-combat-damage"; allocation: import("@/game/types").DamageAllocation }
   | { kind: "dismiss-combat" }
+  | { kind: "activate-elevator" }
   | { kind: "complete-elevator"; dice?: number[]; floorPick?: "ground" | "upper" | "basement" }
   | { kind: "attempt-vault-lockpick" }
   | { kind: "dismiss-vault" };

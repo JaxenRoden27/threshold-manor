@@ -101,6 +101,9 @@ function applyHostAction(action: GameAction, fromPeerId: string) {
     case "dismiss-combat":
       useGameStore.getState().dismissCombat();
       break;
+    case "activate-elevator":
+      useGameStore.getState().activateElevator();
+      break;
     case "complete-elevator":
       useGameStore.getState().completeElevatorTransition(
         action.dice,

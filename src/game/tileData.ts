@@ -12,6 +12,7 @@ export interface TileTemplate {
   floorLink?: Tile["floorLink"];
   isLocked?: boolean;
   turnEndBuff?: Stat;
+  barrierStat?: Tile["barrierStat"];
 }
 
 const makeDoors = (n: boolean, s: boolean, e: boolean, w: boolean): Doors => ({
@@ -94,7 +95,9 @@ export const EXPLORATION_TILES: TileTemplate[] = [
   { id: "larder", name: "Larder", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(true, false, true, false), weight: 1, symbol: "none", turnEndBuff: "might" },
   { id: "chapel", name: "Chapel", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(false, true, false, true), weight: 1, symbol: "none", turnEndBuff: "sanity" },
   { id: "coal-chute", name: "Coal Chute", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(true, false, false, true), weight: 1, symbol: "none", special: "coal-chute" },
-  { id: "mystic-elevator", name: "Mystic Elevator", pool: "ground", allowedFloors: ["ground", "upper", "basement"], doors: makeDoors(true, true, true, true), weight: 1, symbol: "none", special: "mystic-elevator" },
+  { id: "mystic-elevator", name: "Mystic Elevator", pool: "ground", allowedFloors: ["ground", "upper", "basement"], doors: makeDoors(true, false, false, false), weight: 1, symbol: "none", special: "mystic-elevator" },
+  { id: "chasm", name: "Chasm", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(true, true, false, false), weight: 1, symbol: "event", special: "chasm", barrierStat: { stat: "might", min: 4 } },
+  { id: "collapsed-room", name: "Collapsed Room", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(true, true, true, false), weight: 1, symbol: "none", special: "collapsed-room" },
   { id: "moonlit-balcony", name: "Moonlit Balcony", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(true, true, false, false), weight: 2, symbol: "omen" },
   { id: "guest-bedroom", name: "Guest Bedroom", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(true, false, true, true), weight: 3, symbol: "event" },
   { id: "nursery", name: "Nursery", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(false, true, true, false), weight: 2, symbol: "omen" },
@@ -108,6 +111,7 @@ export const EXPLORATION_TILES: TileTemplate[] = [
   { id: "vault", name: "Vault", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(false, true, true, false), weight: 2, symbol: "none", isLocked: true },
   { id: "flooded-tunnels", name: "Flooded Tunnels", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(true, false, false, true), weight: 2, symbol: "event" },
   { id: "ritual-chamber", name: "Ritual Chamber", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(false, true, false, true), weight: 1, symbol: "omen" },
+  { id: "catacombs", name: "Catacombs", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(false, false, true, true), weight: 1, symbol: "event", special: "catacombs", barrierStat: { stat: "might", min: 4 } },
   { id: "collapsed-passage", name: "Collapsed Passage", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(true, true, false, true), weight: 2, symbol: "item" },
 ];
 
@@ -211,6 +215,7 @@ export function templateToTile(
     turnEndBuff: template.turnEndBuff,
     special: template.special,
     floorLink: template.floorLink,
+    barrierStat: template.barrierStat,
   };
 }
 

@@ -2,7 +2,6 @@
 
 import { useGameStore } from "@/store/gameStore";
 import { useGameActions } from "@/hooks/useGameActions";
-import { getTransitionLabel } from "@/game/roomTransitions";
 import { DiceRollPanel } from "@/components/DiceRollPanel";
 import { Button } from "@/components/ui/button";
 import type { Floor } from "@/game/types";
@@ -20,18 +19,13 @@ const FLOOR_OPTIONS: { floor: Floor; label: string }[] = [
   { floor: "upper", label: "Upper" },
 ];
 
-export function TransitionModal() {
-  const { pendingTransition, players, activePlayerIndex, phase } =
-    useGameStore();
+export function MysticElevatorModal() {
+  const { pendingElevator } = useGameStore();
   const { completeElevatorTransition, canAct } = useGameActions();
 
-  if (!pendingTransition || pendingTransition.kind !== "mystic-elevator") {
-    return null;
-  }
+  if (!pendingElevator) return null;
 
-  const active = players[activePlayerIndex];
-  const traitorPicker =
-    phase === "HAUNT_ACTIVE" && active?.isTraitor;
+  const picking = pendingElevator.phase === "pick-floor";
 
   return (
     <Dialog open>
@@ -39,13 +33,15 @@ export function TransitionModal() {
         <DialogHeader>
           <DialogTitle className="text-violet-300">Mystic Elevator</DialogTitle>
           <DialogDescription className="text-stone-400">
-            {traitorPicker
-              ? "As the Traitor, choose which floor the elevator delivers you to."
-              : "Roll 2 Betrayal dice: 0 = Basement, 1–2 = Ground, 3+ = Upper. The elevator travels with you."}
+            {picking
+              ? pendingElevator.total !== undefined
+                ? `Roll ${pendingElevator.total} — choose a destination floor. The elevator docks at an open doorway.`
+                : "Choose a destination floor. Everyone aboard travels together."
+              : "Roll 2 Betrayal dice: 0–1 Basement, 2 Ground, 3 Upper, 4+ you pick."}
           </DialogDescription>
         </DialogHeader>
 
-        {traitorPicker ? (
+        {picking ? (
           <div className="flex flex-col gap-2">
             {FLOOR_OPTIONS.map(({ floor, label }) => (
               <Button
@@ -53,9 +49,7 @@ export function TransitionModal() {
                 variant="outline"
                 className="border-violet-600 text-violet-200"
                 disabled={!canAct()}
-                onClick={() =>
-                  completeElevatorTransition([0, 0], floor)
-                }
+                onClick={() => completeElevatorTransition(undefined, floor)}
               >
                 Send to {label}
               </Button>
@@ -66,7 +60,7 @@ export function TransitionModal() {
             config={{
               diceCount: 2,
               title: "Elevator Roll",
-              description: getTransitionLabel("mystic-elevator"),
+              description: "Sum 0–1 Basement · 2 Ground · 3 Upper · 4+ pick floor",
               variant: "threat",
             }}
             canRoll={canAct()}

@@ -19,23 +19,6 @@ export const BUFF_ROOM_STATS: Record<string, Stat> = {
   larder: "might",
 };
 
-export function handleCoalChuteEnter(state: GameState, playerIndex: number): GameState {
-  const player = state.players[playerIndex];
-  const dest = { floor: "basement" as Floor, x: 0, y: 0 };
-  const players = state.players.map((p, i) =>
-    i === playerIndex ? { ...p, floor: dest.floor, x: dest.x, y: dest.y } : p
-  );
-  return {
-    ...state,
-    players,
-    viewFloor: dest.floor,
-    log: [
-      ...state.log,
-      `${player.name} plummets down the Coal Chute to the Basement Landing!`,
-    ],
-  };
-}
-
 export function handleOnTurnEnd(state: GameState, playerIndex: number): GameState {
   const player = state.players[playerIndex];
   const tile = tileAt(state.tiles, player.floor, player.x, player.y);

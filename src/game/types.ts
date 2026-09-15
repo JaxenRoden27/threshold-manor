@@ -21,7 +21,15 @@ export type TileSpecial =
   | "upper-landing"
   | "coal-chute"
   | "basement-landing"
-  | "mystic-elevator";
+  | "mystic-elevator"
+  | "collapsed-room"
+  | "chasm"
+  | "catacombs";
+
+export interface BarrierStat {
+  stat: Stat;
+  min: number;
+}
 
 export type EventTierRange = "0-1" | "2-3" | "4+";
 
@@ -44,8 +52,7 @@ export type RoomTransitionKind =
   | "grand-staircase"
   | "upper-landing"
   | "coal-chute"
-  | "basement-stairs"
-  | "mystic-elevator";
+  | "basement-stairs";
 
 export interface CharacterTemplate {
   id: string;
@@ -74,6 +81,8 @@ export interface Player {
   isTraitor: boolean;
   guardNextCombat: boolean;
   visitedBuffRooms: string[];
+  /** Direction player moved from when entering current tile */
+  enteredFrom?: Direction;
 }
 
 export interface Doors {
@@ -106,6 +115,7 @@ export interface Tile {
   symbol: TileSymbol;
   isLocked?: boolean;
   turnEndBuff?: Stat;
+  barrierStat?: BarrierStat;
 }
 
 export interface CardEffect {
@@ -291,4 +301,10 @@ export interface GameState {
   } | null;
   pendingVaultItems: PendingCard[];
   pendingVaultLockpick: string | null;
+  pendingElevator: {
+    sourceTileId: string;
+    phase: "roll" | "pick-floor";
+    dice?: number[];
+    total?: number;
+  } | null;
 }

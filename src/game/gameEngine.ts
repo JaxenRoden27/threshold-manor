@@ -13,18 +13,28 @@ import {
   templateToTile,
 } from "./tileData";
 import {
-  buildElevatorTile,
-  elevatorDestinationCoords,
-  elevatorFloorFromRoll,
   getTransitionDestination,
   getTransitionKind,
   getTransitionLabel,
-  rollElevatorDestination,
   transitionCostsAp,
 } from "./roomTransitions";
 import {
-  drawCardForSymbol,
+  activateElevatorFromRoom,
+  beginElevatorSequence,
+  completeElevatorFloorPick,
+  completeElevatorRoll,
+  shouldTriggerElevatorOnEnter,
+} from "./mysticElevatorEngine";
+import {
+  barrierFailMessage,
+  canCrossBarrier,
   handleCoalChuteEnter,
+  handleCollapsedRoomEnter,
+  isBarrierCrossing,
+  withEnteredFrom,
+} from "./specialRooms";
+import {
+  drawCardForSymbol,
   handleOnTurnEnd,
   attemptVaultLockpick as vaultLockpick,
 } from "./roomHandlers";
@@ -116,6 +126,7 @@ export function createInitialState(): GameState {
     pendingTransition: null,
     pendingVaultItems: [],
     pendingVaultLockpick: null,
+    pendingElevator: null,
   });
 }
 
@@ -192,6 +203,7 @@ export function startGame(
     pendingTransition: null,
     pendingVaultItems: [],
     pendingVaultLockpick: null,
+    pendingElevator: null,
     log: [
       "You stand in the Entrance Hall. The door seals behind you.",
       "Explore floor by floor. Uncover Omens—but each one risks the Haunt.",
@@ -227,7 +239,7 @@ function updatePlayer(
 
 function beginTurnForPlayer(players: Player[], index: number): Player[] {
   return players.map((p, i) =>
-    i === index ? { ...p, ap: p.speed } : p
+    i === index ? { ...p, ap: p.speed, enteredFrom: undefined } : p
   );
 }
 
@@ -464,7 +476,12 @@ export function movePlayer(
   direction: Direction
 ): GameState {
   const movablePhases: Phase[] = ["exploration", "HAUNT_ACTIVE"];
-  if (!movablePhases.includes(state.phase) || state.pendingCard || state.combat)
+  if (
+    !movablePhases.includes(state.phase) ||
+    state.pendingCard ||
+    state.combat ||
+    state.pendingElevator
+  )
     return state;
 
   const active = getActivePlayer(state);
@@ -472,6 +489,17 @@ export function movePlayer(
 
   const currentTile = getTileAt(state.tiles, active.floor, active.x, active.y);
   if (!currentTile || !currentTile.doors[direction]) return state;
+
+  if (
+    currentTile.barrierStat &&
+    isBarrierCrossing(currentTile, active.enteredFrom, direction) &&
+    !canCrossBarrier(active, currentTile)
+  ) {
+    return {
+      ...state,
+      log: [...state.log, barrierFailMessage(active, currentTile)],
+    };
+  }
 
   const { dx, dy } = DIRECTION_DELTA[direction];
   const nx = active.x + dx;
@@ -511,12 +539,16 @@ export function movePlayer(
     newAp = 0;
   }
 
-  let players = updatePlayer(state.players, state.activePlayerIndex, (p) => ({
-    ...p,
-    x: nx,
-    y: ny,
-    ap: newAp,
-  }));
+  let players = withEnteredFrom(
+    updatePlayer(state.players, state.activePlayerIndex, (p) => ({
+      ...p,
+      x: nx,
+      y: ny,
+      ap: newAp,
+    })),
+    state.activePlayerIndex,
+    OPPOSITE[direction]
+  );
 
   if (isNewDiscovery) {
     tiles = tiles.map((t) =>
@@ -556,9 +588,19 @@ export function movePlayer(
   if (targetTile.special === "coal-chute") {
     next = handleCoalChuteEnter(next, state.activePlayerIndex);
     players = next.players;
+  } else if (targetTile.special === "collapsed-room") {
+    next = handleCollapsedRoomEnter(next, state.activePlayerIndex, targetTile);
+    players = next.players;
+  } else if (shouldTriggerElevatorOnEnter(active, targetTile)) {
+    next = beginElevatorSequence(
+      next,
+      targetTile,
+      players[state.activePlayerIndex].isTraitor
+    );
   }
 
-  next = maybeTriggerHauntCombat(next, players[state.activePlayerIndex], active.floor, nx, ny);
+  const moved = players[state.activePlayerIndex];
+  next = maybeTriggerHauntCombat(next, moved, moved.floor, moved.x, moved.y);
   return next;
 }
 
@@ -577,14 +619,19 @@ export function beginRoomTransition(state: GameState): GameState {
   const apCost = transitionCostsAp(kind);
   if (active.ap < apCost) return state;
 
-  if (kind === "mystic-elevator") {
-    return {
-      ...state,
-      pendingTransition: { kind, tileId: currentTile.id },
-    };
-  }
-
   return applyRoomTransition(state, kind);
+}
+
+export function activateElevator(state: GameState): GameState {
+  const movablePhases: Phase[] = ["exploration", "HAUNT_ACTIVE"];
+  if (
+    !movablePhases.includes(state.phase) ||
+    state.pendingCard ||
+    state.combat ||
+    state.pendingElevator
+  )
+    return state;
+  return activateElevatorFromRoom(state);
 }
 
 export function completeElevatorTransition(
@@ -592,14 +639,18 @@ export function completeElevatorTransition(
   elevatorDice?: number[],
   floorPick?: Floor
 ): GameState {
-  return applyRoomTransition(state, "mystic-elevator", elevatorDice, floorPick);
+  if (floorPick !== undefined) {
+    return completeElevatorFloorPick(state, floorPick);
+  }
+  if (elevatorDice) {
+    return completeElevatorRoll(state, elevatorDice);
+  }
+  return state;
 }
 
 export function applyRoomTransition(
   state: GameState,
-  kind: RoomTransitionKind,
-  elevatorDice?: number[],
-  floorPick?: Floor
+  kind: RoomTransitionKind
 ): GameState {
   const active = getActivePlayer(state);
   const currentTile = getTileAt(state.tiles, active.floor, active.x, active.y);
@@ -612,61 +663,6 @@ export function applyRoomTransition(
   let players = [...state.players];
   let log = [...state.log];
   const playerIndex = state.activePlayerIndex;
-
-  if (kind === "mystic-elevator") {
-    const rolled = elevatorDice
-      ? {
-          dice: elevatorDice,
-          total: elevatorDice.reduce((s, d) => s + d, 0),
-          floor: elevatorFloorFromRoll(
-            elevatorDice.reduce((s, d) => s + d, 0)
-          ),
-        }
-      : rollElevatorDestination();
-    const roll = { ...rolled, floor: floorPick ?? rolled.floor };
-
-    const coords = elevatorDestinationCoords(roll.floor, tiles, currentTile.doors);
-    tiles = tiles.filter((t) => t.id !== currentTile.id);
-    const elevatorTile = buildElevatorTile(
-      coords.floor,
-      coords.x,
-      coords.y,
-      currentTile.doors
-    );
-    if (!tiles.some((t) => t.id === elevatorTile.id)) {
-      tiles.push(elevatorTile);
-    }
-
-    players = updatePlayer(players, playerIndex, (p) => ({
-      ...p,
-      floor: coords.floor,
-      x: coords.x,
-      y: coords.y,
-      ap: p.ap - apCost,
-    }));
-
-    const floorLabel =
-      roll.floor === "basement"
-        ? "Basement"
-        : roll.floor === "upper"
-          ? "Upper"
-          : "Ground";
-    log.push(
-      `${active.name} rides the Mystic Elevator (${roll.dice.map(betrayalFaceLabel).join(", ")} = ${roll.total}) to the ${floorLabel} floor.`
-    );
-
-    let next: GameState = {
-      ...state,
-      players,
-      tiles,
-      viewFloor: coords.floor,
-      pendingTransition: null,
-      log,
-    };
-    const moved = players[playerIndex];
-    next = maybeTriggerHauntCombat(next, moved, moved.floor, moved.x, moved.y);
-    return next;
-  }
 
   const dest = getTransitionDestination(kind, currentTile);
   if (!dest) return state;
@@ -718,7 +714,8 @@ export function endTurn(state: GameState): GameState {
     state.pendingCard ||
     state.combat ||
     state.pendingTransition ||
-    state.pendingVaultLockpick
+    state.pendingVaultLockpick ||
+    state.pendingElevator
   )
     return state;
 

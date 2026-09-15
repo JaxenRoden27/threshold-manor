@@ -1,7 +1,5 @@
-import { rollBetrayalDice } from "./diceEngine";
-import { findBasementEdgePlacement } from "./roomHandlers";
 import { TILE_BY_ID, templateToTile } from "./tileData";
-import type { Floor, RoomTransitionKind, Tile, TileSymbol } from "./types";
+import type { Floor, RoomTransitionKind, Tile } from "./types";
 
 export const ELEVATOR_DESTINATIONS: Record<
   Floor,
@@ -35,9 +33,6 @@ export function getTransitionKind(tile: Tile): RoomTransitionKind | null {
   if (tile.special === "upper-landing") return "upper-landing";
   if (tile.special === "coal-chute") return "coal-chute";
   if (tile.special === "basement-landing") return "basement-stairs";
-  if (tile.templateId === "mystic-elevator" || tile.special === "mystic-elevator") {
-    return "mystic-elevator";
-  }
   return null;
 }
 
@@ -51,60 +46,7 @@ export function getTransitionLabel(kind: RoomTransitionKind): string {
       return "Slide down Coal Chute (free)";
     case "basement-stairs":
       return "Climb stairs to Foyer (1 AP)";
-    case "mystic-elevator":
-      return "Ride Mystic Elevator — roll 2 dice (1 AP)";
   }
-}
-
-export function elevatorFloorFromRoll(total: number): Floor {
-  if (total === 0) return "basement";
-  if (total <= 2) return "ground";
-  return "upper"; // 3-4 on two Betrayal dice
-}
-
-export function rollElevatorDestination(): {
-  dice: number[];
-  total: number;
-  floor: Floor;
-} {
-  const { dice, total } = rollBetrayalDice(2);
-  return { dice, total, floor: elevatorFloorFromRoll(total) };
-}
-
-export function elevatorDestinationCoords(
-  floor: Floor,
-  tiles: Tile[],
-  elevatorDoors: Tile["doors"]
-): { floor: Floor; x: number; y: number } {
-  if (floor === "basement") {
-    return findBasementEdgePlacement(tiles);
-  }
-  if (floor === "ground") {
-    return { floor: "ground", x: 0, y: 1 };
-  }
-  return { floor: "upper", x: 0, y: 2 };
-}
-
-export function buildElevatorTile(
-  floor: Floor,
-  x: number,
-  y: number,
-  doors: Tile["doors"]
-): Tile {
-  return {
-    id: `tile-${floor}-${x}-${y}`,
-    templateId: "mystic-elevator",
-    name: "Mystic Elevator",
-    pool: floor,
-    floor,
-    x,
-    y,
-    doors: { ...doors },
-    visited: true,
-    cardResolved: true,
-    symbol: "none" as TileSymbol,
-    special: "mystic-elevator",
-  };
 }
 
 export function getTransitionDestination(
@@ -120,8 +62,6 @@ export function getTransitionDestination(
       return { floor: "basement", x: 0, y: 0 };
     case "basement-stairs":
       return { floor: "ground", x: 0, y: 1 };
-    case "mystic-elevator":
-      return null;
   }
 }
 
