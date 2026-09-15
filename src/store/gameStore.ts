@@ -2,8 +2,11 @@ import { create } from "zustand";
 import {
   applyHauntRoll,
   applyStatRoll,
+  attemptVaultLockpick,
+  completeElevatorTransition,
   createInitialState,
   dismissCard,
+  dismissVaultLockpick,
   endTurn,
   movePlayer,
   resolveItemCard,
@@ -17,13 +20,14 @@ import {
   dismissHauntBriefing,
 } from "@/game/hauntEngine";
 import {
+  applyDamageAllocation,
   dismissCombat,
   resolveCombatRoll,
-  rollCombatForActive,
+  rollCombatDice,
   startCombat,
 } from "@/game/combatEngine";
 import { rotateSigil, isPuzzleFailed } from "@/game/puzzleEngine";
-import type { Direction, Floor, GameState, Phase } from "@/game/types";
+import type { DamageAllocation, Direction, Floor, GameState, Phase } from "@/game/types";
 
 interface GameStore extends GameState {
   setPlayerCount: (count: number) => void;
@@ -31,16 +35,20 @@ interface GameStore extends GameState {
   setViewFloor: (floor: Floor) => void;
   move: (direction: Direction) => void;
   useFloorTransition: () => void;
+  completeElevatorTransition: (dice?: number[], floorPick?: Floor) => void;
   resolveItemCard: () => void;
   rollStatCheck: (dice: number[]) => void;
   rollHauntRoll: (dice: number[]) => void;
   dismissPendingCard: () => void;
   endTurn: () => void;
+  attemptVaultLockpick: () => void;
+  dismissVaultLockpick: () => void;
   rotatePuzzleSigil: (index: number) => void;
   dismissHauntBriefing: () => void;
   performHauntAction: (actionId: string) => void;
   initiateCombat: (defenderId: string, defenderType: "player" | "monster", mental?: boolean) => void;
   rollCombat: () => void;
+  allocateCombatDamage: (allocation: DamageAllocation) => void;
   dismissCombat: () => void;
   resetGame: () => void;
 }
@@ -57,6 +65,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   move: (direction) => set((s) => movePlayer(s, direction)),
 
   useFloorTransition: () => set((s) => useFloorTransition(s)),
+
+  completeElevatorTransition: (dice, floorPick) =>
+    set((s) => completeElevatorTransition(s, dice, floorPick)),
 
   resolveItemCard: () => {
     const s = get();
@@ -81,6 +92,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   endTurn: () => set((s) => endTurn(s)),
 
+  attemptVaultLockpick: () => set((s) => attemptVaultLockpick(s)),
+
+  dismissVaultLockpick: () => set((s) => dismissVaultLockpick(s)),
+
   dismissHauntBriefing: () => set((s) => dismissHauntBriefing(s)),
 
   performHauntAction: (actionId) =>
@@ -92,9 +107,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
   rollCombat: () => {
     const s = get();
     if (!s.combat || s.combat.phase !== "rolling") return;
-    const { attackerDice, defenderDice } = rollCombatForActive(s);
-    set(resolveCombatRoll(s, attackerDice, defenderDice));
+    const { attackerDice, defenderDice, attackerTotal, defenderTotal } =
+      rollCombatDice(s);
+    set(resolveCombatRoll(s, attackerDice, defenderDice, attackerTotal, defenderTotal));
   },
+
+  allocateCombatDamage: (allocation) =>
+    set((s) => applyDamageAllocation(s, allocation)),
 
   dismissCombat: () => set((s) => dismissCombat(s)),
 

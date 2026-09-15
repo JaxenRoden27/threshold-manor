@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Die } from "@/components/Die";
+import { DamageAllocationModal } from "@/components/DamageAllocationModal";
 
 export function CombatModal() {
   const { combat, players, haunt } = useGameStore();
@@ -28,6 +29,10 @@ export function CombatModal() {
   }, [combat, canAct, rollCombat]);
 
   if (!combat) return null;
+
+  if (combat.phase === "allocate-damage") {
+    return <DamageAllocationModal />;
+  }
 
   const attacker = players.find((p) => p.id === combat.attackerId);
   const defender =

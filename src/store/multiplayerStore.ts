@@ -95,8 +95,23 @@ function applyHostAction(action: GameAction, fromPeerId: string) {
     case "roll-combat":
       useGameStore.getState().rollCombat();
       break;
+    case "allocate-combat-damage":
+      useGameStore.getState().allocateCombatDamage(action.allocation);
+      break;
     case "dismiss-combat":
       useGameStore.getState().dismissCombat();
+      break;
+    case "complete-elevator":
+      useGameStore.getState().completeElevatorTransition(
+        action.dice,
+        action.floorPick
+      );
+      break;
+    case "attempt-vault-lockpick":
+      useGameStore.getState().attemptVaultLockpick();
+      break;
+    case "dismiss-vault":
+      useGameStore.getState().dismissVaultLockpick();
       break;
   }
 }

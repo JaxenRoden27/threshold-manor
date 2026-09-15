@@ -9,6 +9,8 @@ import { GameBoard } from "./GameBoard";
 import { GameSidebar } from "./GameSidebar";
 import { CardModal } from "./CardModal";
 import { CombatModal } from "./CombatModal";
+import { TransitionModal } from "./TransitionModal";
+import { VaultInteractionModal } from "./VaultInteractionModal";
 import { CrisisOverlay } from "./CrisisOverlay";
 import { HauntBriefingModal } from "./HauntBriefingModal";
 import { Button } from "@/components/ui/button";
@@ -95,6 +97,8 @@ export function GameApp() {
       <CardModal />
       <HauntBriefingModal />
       <CombatModal />
+      <TransitionModal />
+      <VaultInteractionModal />
       <CrisisOverlay />
     </main>
   );

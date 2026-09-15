@@ -1,6 +1,6 @@
 "use client";
 
-import type { Direction, Floor } from "@/game/types";
+import type { DamageAllocation, Direction, Floor } from "@/game/types";
 import { useGameStore } from "@/store/gameStore";
 import { useMultiplayerStore } from "@/store/multiplayerStore";
 
@@ -20,6 +20,9 @@ export function useGameActions() {
         case "use-floor-transition":
           store.useFloorTransition();
           break;
+        case "complete-elevator":
+          store.completeElevatorTransition(action.dice, action.floorPick);
+          break;
         case "resolve-item":
           store.resolveItemCard();
           break;
@@ -35,6 +38,12 @@ export function useGameActions() {
           break;
         case "end-turn":
           store.endTurn();
+          break;
+        case "attempt-vault-lockpick":
+          store.attemptVaultLockpick();
+          break;
+        case "dismiss-vault":
+          store.dismissVaultLockpick();
           break;
         case "rotate-sigil":
           store.rotatePuzzleSigil(action.index);
@@ -58,6 +67,9 @@ export function useGameActions() {
         case "roll-combat":
           store.rollCombat();
           break;
+        case "allocate-combat-damage":
+          store.allocateCombatDamage(action.allocation);
+          break;
         case "dismiss-combat":
           store.dismissCombat();
           break;
@@ -68,11 +80,15 @@ export function useGameActions() {
     dispatchAction(action);
   };
 
+  const state = () => useGameStore.getState();
+
   return {
     move: (direction: Direction) =>
       guardDispatch({ kind: "move", direction }),
     useFloorTransition: () =>
       guardDispatch({ kind: "use-floor-transition" }),
+    completeElevatorTransition: (dice?: number[], floorPick?: Floor) =>
+      guardDispatch({ kind: "complete-elevator", dice, floorPick }),
     setViewFloor: (floor: Floor) =>
       guardDispatch({ kind: "set-view-floor", floor }, false),
     resolveItemCard: () =>
@@ -86,6 +102,10 @@ export function useGameActions() {
     dismissPendingCard: () =>
       guardDispatch({ kind: "dismiss-card" }),
     endTurn: () => guardDispatch({ kind: "end-turn" }),
+    attemptVaultLockpick: () =>
+      guardDispatch({ kind: "attempt-vault-lockpick" }),
+    dismissVaultLockpick: () =>
+      guardDispatch({ kind: "dismiss-vault" }, false),
     rotatePuzzleSigil: (index: number) =>
       guardDispatch({ kind: "rotate-sigil", index }),
     dismissHauntBriefing: () =>
@@ -99,9 +119,18 @@ export function useGameActions() {
     ) =>
       guardDispatch({ kind: "start-combat", defenderId, defenderType, mental }),
     rollCombat: () => guardDispatch({ kind: "roll-combat" }),
+    allocateCombatDamage: (allocation: DamageAllocation) =>
+      guardDispatch({ kind: "allocate-combat-damage", allocation }),
     dismissCombat: () => guardDispatch({ kind: "dismiss-combat" }, false),
     canAct: () => mode === "local" || canLocalAct(),
-    inputBlocked: () => Boolean(useGameStore.getState().pendingCard),
-    combatBlocked: () => Boolean(useGameStore.getState().combat),
+    inputBlocked: () => Boolean(state().pendingCard),
+    combatBlocked: () => Boolean(state().combat),
+    modalBlocked: () =>
+      Boolean(
+        state().pendingCard ||
+          state().combat ||
+          state().pendingTransition ||
+          state().pendingVaultLockpick
+      ),
   };
 }

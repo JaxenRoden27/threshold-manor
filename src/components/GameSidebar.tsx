@@ -25,6 +25,7 @@ export function GameSidebar() {
     threatLevel,
     log,
     pendingCard,
+    combat,
     haunt,
     phase: gamePhase,
   } = useGameStore();
@@ -146,7 +147,9 @@ export function GameSidebar() {
         </Card>
       )}
 
-      {(phase === "exploration" || phase === "HAUNT_ACTIVE") && !pendingCard && (
+      {(phase === "exploration" || phase === "HAUNT_ACTIVE") &&
+        !pendingCard &&
+        !combat && (
         <Button
           variant="outline"
           onClick={endTurn}
@@ -154,6 +157,7 @@ export function GameSidebar() {
           disabled={!canAct()}
         >
           End Turn
+          {active?.ap === 0 ? " (Space)" : ""}
         </Button>
       )}
 

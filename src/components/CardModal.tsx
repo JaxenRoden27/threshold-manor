@@ -2,7 +2,6 @@
 
 import { useGameStore } from "@/store/gameStore";
 import { useGameActions } from "@/hooks/useGameActions";
-import { getCardTarget } from "@/game/cardData";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { DiceRollPanel } from "@/components/DiceRollPanel";
 import { Die } from "@/components/Die";
+import { EventCardModal } from "@/components/EventCardModal";
 
 export function CardModal() {
   const { pendingCard, players, activePlayerIndex, omensDrawn } =
@@ -47,6 +47,7 @@ export function CardModal() {
     card.stat && active ? active[card.stat] : 1;
 
   const nextOmenCount = omensDrawn + 1;
+  const hasTiers = card.type === "event" && card.tiers && card.tiers.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={() => resolved && dismissPendingCard()}>
@@ -74,14 +75,22 @@ export function CardModal() {
           </div>
         )}
 
-        {card.type === "event" && pendingCard?.rollPhase === "await-stat" && (
+        {hasTiers && pendingCard && (
+          <EventCardModal
+            card={card}
+            pendingCard={pendingCard}
+            active={active}
+            canRoll={canRoll}
+            onRoll={rollStatCheck}
+          />
+        )}
+
+        {card.type === "event" && !hasTiers && pendingCard?.rollPhase === "await-stat" && (
           <DiceRollPanel
             config={{
               diceCount: statDiceCount,
-              target: getCardTarget(card),
-              targetLabel: "target",
               title: `${active?.name} tests ${card.stat}`,
-              description: `Roll ${statDiceCount} Betrayal dice (${card.stat}). Sum must meet or beat the target.`,
+              description: `Roll ${statDiceCount} Betrayal dice (${card.stat}).`,
             }}
             canRoll={canRoll}
             waitingLabel={`Waiting for ${active?.name} to roll…`}
@@ -89,7 +98,7 @@ export function CardModal() {
           />
         )}
 
-        {card.type === "event" && resolved && pendingCard?.statDice && (
+        {card.type === "event" && !hasTiers && resolved && pendingCard?.statDice && (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-center gap-2">
               {pendingCard.statDice.map((face, i) => (

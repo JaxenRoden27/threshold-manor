@@ -1,28 +1,19 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGameStore } from "@/store/gameStore";
 import { useMultiplayerStore } from "@/store/multiplayerStore";
 import { useGameActions } from "@/hooks/useGameActions";
 import type { Direction, Floor, Player, Tile } from "@/game/types";
 import { DIRECTION_DELTA, FLOOR_LABELS } from "@/game/tileData";
+import {
+  TILE_RENDER_SIZE,
+  TileRenderer,
+} from "@/components/TileRenderer";
 import { Button } from "@/components/ui/button";
 import { HauntActionsPanel } from "@/components/HauntActionsPanel";
 
-const TILE_SIZE = 88;
 const MAP_PADDING = 40;
-const POOL_COLORS: Record<string, string> = {
-  ground: "bg-emerald-900/80 border-emerald-600",
-  upper: "bg-violet-900/80 border-violet-600",
-  basement: "bg-rose-950/80 border-rose-700",
-};
-
-const DOOR_OFFSETS: Record<Direction, string> = {
-  north: "top-0 left-1/2 -translate-x-1/2 -translate-y-1/2",
-  south: "bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2",
-  east: "right-0 top-1/2 translate-x-1/2 -translate-y-1/2",
-  west: "left-0 top-1/2 -translate-x-1/2 -translate-y-1/2",
-};
 
 const FLOORS: Floor[] = ["ground", "upper", "basement"];
 
@@ -33,29 +24,54 @@ const DIRECTION_KEY_LABEL: Record<Direction, string> = {
   east: "D",
 };
 
+function isTypingTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement;
+  return (
+    el?.tagName === "INPUT" ||
+    el?.tagName === "TEXTAREA" ||
+    el?.isContentEditable
+  );
+}
+
 export function GameBoard() {
   const {
     tiles,
     players,
     activePlayerIndex,
     phase,
-    pendingCard,
     viewFloor,
   } = useGameStore();
   const {
     move,
     useFloorTransition,
     setViewFloor,
+    endTurn,
     canAct,
     inputBlocked,
-    combatBlocked,
+    modalBlocked,
   } = useGameActions();
 
   const active = players[activePlayerIndex];
 
+  const [displayFloor, setDisplayFloor] = useState<Floor>(viewFloor);
+  const [floorTransitioning, setFloorTransitioning] = useState(false);
+  const prevFloorRef = useRef(viewFloor);
+
+  useEffect(() => {
+    if (viewFloor === prevFloorRef.current) return;
+    setFloorTransitioning(true);
+    const swapTimer = setTimeout(() => {
+      setDisplayFloor(viewFloor);
+      prevFloorRef.current = viewFloor;
+      const endTimer = setTimeout(() => setFloorTransitioning(false), 250);
+      return () => clearTimeout(endTimer);
+    }, 200);
+    return () => clearTimeout(swapTimer);
+  }, [viewFloor]);
+
   const floorTiles = useMemo(
-    () => tiles.filter((t) => t.floor === viewFloor),
-    [tiles, viewFloor]
+    () => tiles.filter((t) => t.floor === displayFloor),
+    [tiles, displayFloor]
   );
 
   const bounds = useMemo(() => {
@@ -74,20 +90,41 @@ export function GameBoard() {
 
   const canMove =
     (phase === "exploration" || phase === "HAUNT_ACTIVE") &&
-    !inputBlocked() &&
-    !combatBlocked() &&
+    !modalBlocked() &&
     active?.ap > 0 &&
     active.floor === viewFloor &&
     canAct();
 
+  const canEndTurnWithSpace =
+    (phase === "exploration" || phase === "HAUNT_ACTIVE") &&
+    !modalBlocked() &&
+    active?.ap === 0 &&
+    canAct();
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
+      if (isTypingTarget(e.target)) return;
+
+      const state = useGameStore.getState();
+      const currentActive = state.players[state.activePlayerIndex];
+      const { mode, canLocalAct } = useMultiplayerStore.getState();
+      const mayAct = mode === "local" || canLocalAct();
+
+      const blocked =
+        state.pendingCard ||
+        state.combat ||
+        state.pendingTransition ||
+        state.pendingVaultLockpick;
+
       if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
+        (e.key === " " || e.code === "Space") &&
+        !blocked &&
+        mayAct &&
+        (state.phase === "exploration" || state.phase === "HAUNT_ACTIVE") &&
+        currentActive?.ap === 0
       ) {
+        e.preventDefault();
+        endTurn();
         return;
       }
 
@@ -109,8 +146,6 @@ export function GameBoard() {
       const direction = keyToDirection[e.key];
       if (!direction) return;
 
-      const state = useGameStore.getState();
-      const currentActive = state.players[state.activePlayerIndex];
       const tile = state.tiles.find(
         (t) =>
           t.floor === currentActive?.floor &&
@@ -118,13 +153,9 @@ export function GameBoard() {
           t.y === currentActive?.y
       );
 
-      const { mode, canLocalAct } = useMultiplayerStore.getState();
-      const mayAct = mode === "local" || canLocalAct();
-
       const movementAllowed =
         (state.phase === "exploration" || state.phase === "HAUNT_ACTIVE") &&
-        !state.pendingCard &&
-        !state.combat &&
+        !blocked &&
         currentActive?.ap > 0 &&
         currentActive.floor === state.viewFloor &&
         mayAct &&
@@ -138,7 +169,7 @@ export function GameBoard() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [move]);
+  }, [move, endTurn]);
 
   const currentTile = active
     ? tiles.find(
@@ -154,10 +185,15 @@ export function GameBoard() {
   const canUseTransition =
     canMove && Boolean(currentTile?.floorLink) && active?.floor === viewFloor;
 
-  const width = (bounds.maxX - bounds.minX + 1) * TILE_SIZE + MAP_PADDING * 2;
-  const height = (bounds.maxY - bounds.minY + 1) * TILE_SIZE + MAP_PADDING * 2;
+  const width =
+    (bounds.maxX - bounds.minX + 1) * TILE_RENDER_SIZE + MAP_PADDING * 2;
+  const height =
+    (bounds.maxY - bounds.minY + 1) * TILE_RENDER_SIZE + MAP_PADDING * 2;
 
   const playersOnFloor = players.filter((p) => p.floor === viewFloor);
+
+  const activeTileOnView =
+    active?.floor === displayFloor ? currentTile : undefined;
 
   return (
     <div className="flex flex-col gap-3">
@@ -189,69 +225,46 @@ export function GameBoard() {
         </p>
       )}
 
-      <div className="overflow-auto rounded-lg border border-stone-700 bg-stone-950/90 p-4">
+      <div className="relative overflow-auto rounded-lg border border-stone-700 bg-stone-950/90 p-4">
+        {floorTransitioning && (
+          <div className="absolute inset-0 z-30 floor-transition-overlay" />
+        )}
         {floorTiles.length === 0 ? (
           <p className="py-8 text-center text-sm text-stone-500">
-            No rooms discovered on {FLOOR_LABELS[viewFloor]} yet.
+            No rooms discovered on {FLOOR_LABELS[displayFloor]} yet.
           </p>
         ) : (
           <div
-            className="relative mx-auto"
-            style={{ width, height, minWidth: width, minHeight: height }}
+            className="relative mx-auto transition-opacity duration-300"
+            style={{
+              width,
+              height,
+              minWidth: width,
+              minHeight: height,
+              opacity: floorTransitioning ? 0.7 : 1,
+            }}
           >
             {floorTiles.map((tile) => {
-              const left = (tile.x - bounds.minX) * TILE_SIZE + MAP_PADDING;
-              const top = (tile.y - bounds.minY) * TILE_SIZE + MAP_PADDING;
-              const playersHere = players.filter(
-                (p) =>
-                  p.floor === tile.floor && p.x === tile.x && p.y === tile.y
-              );
+              const left =
+                (tile.x - bounds.minX) * TILE_RENDER_SIZE + MAP_PADDING;
+              const top =
+                (tile.y - bounds.minY) * TILE_RENDER_SIZE + MAP_PADDING;
+              const isActiveTile = activeTileOnView?.id === tile.id;
+
               return (
                 <div
                   key={tile.id}
-                  className={`absolute flex flex-col items-center justify-center rounded-md border-2 p-1 text-center ${POOL_COLORS[tile.pool]}`}
-                  style={{
-                    left,
-                    top,
-                    width: TILE_SIZE - 8,
-                    height: TILE_SIZE - 8,
-                  }}
+                  className="absolute"
+                  style={{ left, top }}
                 >
-                  <span className="text-[10px] font-semibold leading-tight text-stone-100">
-                    {tile.name}
-                  </span>
-                  {tile.special && (
-                    <span className="text-[8px] text-amber-300/80">★</span>
-                  )}
-                  {!tile.cardResolved && tile.visited && (
-                    <span className="mt-0.5 text-[9px] text-amber-300">!</span>
-                  )}
-                  {playersHere.map((p, i) => (
-                    <span
-                      key={p.id}
-                      className={`absolute text-lg ${
-                        players[activePlayerIndex]?.id === p.id
-                          ? "text-amber-300"
-                          : "text-sky-300"
-                      }`}
-                      style={{
-                        bottom: 4 + i * 14,
-                        right: 4,
-                      }}
-                      title={p.name}
-                    >
-                      ●
-                    </span>
-                  ))}
-                  {(["north", "south", "east", "west"] as Direction[]).map(
-                    (dir) =>
-                      tile.doors[dir] && (
-                        <div
-                          key={dir}
-                          className={`absolute h-2 w-2 rounded-full bg-amber-500/80 ${DOOR_OFFSETS[dir]}`}
-                        />
-                      )
-                  )}
+                  <TileRenderer
+                    tile={tile}
+                    players={players}
+                    activePlayerId={active?.id}
+                    allTiles={tiles}
+                    showUnexploredFog={isActiveTile}
+                    isActiveTile={isActiveTile}
+                  />
                 </div>
               );
             })}
@@ -266,19 +279,21 @@ export function GameBoard() {
           onClick={useFloorTransition}
         >
           {currentTile?.special === "coal-chute"
-            ? "Slide down Coal Chute (1 AP)"
+            ? "Slide down Coal Chute (free)"
             : currentTile?.special === "grand-staircase"
               ? "Climb to Upper Landing (1 AP)"
               : currentTile?.special === "upper-landing"
                 ? "Descend to Grand Staircase (1 AP)"
-                : "Use floor transition (1 AP)"}
+                : currentTile?.special === "mystic-elevator"
+                  ? "Ride Mystic Elevator (1 AP)"
+                  : "Use floor transition (1 AP)"}
         </Button>
       )}
 
       {canMove && availableDirections.length > 0 && (
         <div className="rounded-lg border border-amber-700/40 bg-stone-900/80 p-3">
           <p className="mb-2 text-center text-xs font-medium text-amber-200">
-            Choose a doorway · WASD or arrows · 1 AP · new rooms end your move
+            Choose a doorway · WASD or arrows · 1 AP · symbol rooms stop your move
           </p>
           <div className="mx-auto grid w-fit grid-cols-3 gap-2">
             <div />
@@ -332,6 +347,12 @@ export function GameBoard() {
         </div>
       )}
 
+      {canEndTurnWithSpace && (
+        <p className="text-center text-xs text-stone-500">
+          0 AP — press <kbd className="rounded border border-stone-600 px-1.5 py-0.5 font-mono text-amber-300">Space</kbd> or End Turn
+        </p>
+      )}
+
       <HauntActionsPanel />
 
       {inputBlocked() && (
@@ -373,7 +394,7 @@ function DirectionButton({
       onClick={() => onMove(direction)}
       title={
         unexplored
-          ? `${keyLabel} — explore ${direction} (1 AP, then stop)`
+          ? `${keyLabel} — explore ${direction} (1 AP)`
           : `${keyLabel} — move ${direction} (1 AP)`
       }
     >

@@ -1,4 +1,4 @@
-import type { Direction, Doors, Floor, Tile } from "./types";
+import type { Direction, Doors, Floor, Stat, Tile, TileSymbol } from "./types";
 
 export interface TileTemplate {
   id: string;
@@ -7,8 +7,11 @@ export interface TileTemplate {
   allowedFloors: Floor[];
   doors: Doors;
   weight: number;
+  symbol: TileSymbol;
   special?: Tile["special"];
   floorLink?: Tile["floorLink"];
+  isLocked?: boolean;
+  turnEndBuff?: Stat;
 }
 
 const makeDoors = (n: boolean, s: boolean, e: boolean, w: boolean): Doors => ({
@@ -18,6 +21,14 @@ const makeDoors = (n: boolean, s: boolean, e: boolean, w: boolean): Doors => ({
   west: w,
 });
 
+export const STARTER_TEMPLATE_IDS = new Set([
+  "entrance-hall",
+  "foyer",
+  "grand-staircase",
+  "upper-landing",
+  "basement-landing",
+]);
+
 export const STARTER_TILES: TileTemplate[] = [
   {
     id: "entrance-hall",
@@ -26,6 +37,7 @@ export const STARTER_TILES: TileTemplate[] = [
     allowedFloors: ["ground"],
     doors: makeDoors(false, true, true, true),
     weight: 0,
+    symbol: "none",
     special: "entrance-hall",
   },
   {
@@ -35,6 +47,7 @@ export const STARTER_TILES: TileTemplate[] = [
     allowedFloors: ["ground"],
     doors: makeDoors(true, true, true, true),
     weight: 0,
+    symbol: "none",
     special: "foyer",
   },
   {
@@ -44,6 +57,7 @@ export const STARTER_TILES: TileTemplate[] = [
     allowedFloors: ["ground"],
     doors: makeDoors(true, false, true, true),
     weight: 0,
+    symbol: "none",
     special: "grand-staircase",
     floorLink: { floor: "upper", x: 0, y: 2 },
   },
@@ -54,6 +68,7 @@ export const STARTER_TILES: TileTemplate[] = [
     allowedFloors: ["upper"],
     doors: makeDoors(false, true, true, true),
     weight: 0,
+    symbol: "none",
     special: "upper-landing",
     floorLink: { floor: "ground", x: 0, y: 2 },
   },
@@ -64,29 +79,36 @@ export const STARTER_TILES: TileTemplate[] = [
     allowedFloors: ["basement"],
     doors: makeDoors(false, true, true, true),
     weight: 0,
+    symbol: "none",
     special: "basement-landing",
+    floorLink: { floor: "ground", x: 0, y: 1 },
   },
 ];
 
 export const EXPLORATION_TILES: TileTemplate[] = [
-  { id: "dusty-parlor", name: "Dusty Parlor", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(true, false, true, true), weight: 3 },
-  { id: "creaking-hall", name: "Creaking Hall", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(true, true, false, true), weight: 3 },
-  { id: "servants-pantry", name: "Servants' Pantry", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(false, true, true, false), weight: 2 },
-  { id: "coat-room", name: "Coat Room", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(true, false, false, true), weight: 2 },
-  { id: "music-room", name: "Music Room", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(false, true, true, true), weight: 2 },
-  { id: "coal-chute", name: "Coal Chute", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(true, false, false, true), weight: 1, special: "coal-chute", floorLink: { floor: "basement", x: 0, y: 0 } },
-  { id: "moonlit-balcony", name: "Moonlit Balcony", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(true, true, false, false), weight: 2 },
-  { id: "guest-bedroom", name: "Guest Bedroom", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(true, false, true, true), weight: 3 },
-  { id: "nursery", name: "Nursery", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(false, true, true, false), weight: 2 },
-  { id: "attic-landing", name: "Attic Landing", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(true, true, true, false), weight: 2 },
-  { id: "portrait-gallery", name: "Portrait Gallery", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(false, false, true, true), weight: 2 },
-  { id: "spiral-stairwell", name: "Spiral Stairwell", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(true, true, true, true), weight: 1 },
-  { id: "wine-cellar", name: "Wine Cellar", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(true, false, true, true), weight: 3 },
-  { id: "boiler-room", name: "Boiler Room", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(true, true, false, false), weight: 2 },
-  { id: "root-vault", name: "Root Vault", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(false, true, true, false), weight: 2 },
-  { id: "flooded-tunnels", name: "Flooded Tunnels", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(true, false, false, true), weight: 2 },
-  { id: "ritual-chamber", name: "Ritual Chamber", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(false, true, false, true), weight: 1 },
-  { id: "collapsed-passage", name: "Collapsed Passage", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(true, true, false, true), weight: 2 },
+  { id: "dusty-parlor", name: "Dusty Parlor", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(true, false, true, true), weight: 3, symbol: "event" },
+  { id: "creaking-hall", name: "Creaking Hall", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(true, true, false, true), weight: 3, symbol: "event" },
+  { id: "servants-pantry", name: "Servants' Pantry", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(false, true, true, false), weight: 2, symbol: "item" },
+  { id: "coat-room", name: "Coat Room", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(true, false, false, true), weight: 2, symbol: "item" },
+  { id: "music-room", name: "Music Room", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(false, true, true, true), weight: 2, symbol: "omen" },
+  { id: "larder", name: "Larder", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(true, false, true, false), weight: 1, symbol: "none", turnEndBuff: "might" },
+  { id: "chapel", name: "Chapel", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(false, true, false, true), weight: 1, symbol: "none", turnEndBuff: "sanity" },
+  { id: "coal-chute", name: "Coal Chute", pool: "ground", allowedFloors: ["ground"], doors: makeDoors(true, false, false, true), weight: 1, symbol: "none", special: "coal-chute" },
+  { id: "mystic-elevator", name: "Mystic Elevator", pool: "ground", allowedFloors: ["ground", "upper", "basement"], doors: makeDoors(true, true, true, true), weight: 1, symbol: "none", special: "mystic-elevator" },
+  { id: "moonlit-balcony", name: "Moonlit Balcony", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(true, true, false, false), weight: 2, symbol: "omen" },
+  { id: "guest-bedroom", name: "Guest Bedroom", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(true, false, true, true), weight: 3, symbol: "event" },
+  { id: "nursery", name: "Nursery", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(false, true, true, false), weight: 2, symbol: "omen" },
+  { id: "attic-landing", name: "Attic Landing", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(true, true, true, false), weight: 2, symbol: "none" },
+  { id: "portrait-gallery", name: "Portrait Gallery", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(false, false, true, true), weight: 2, symbol: "event" },
+  { id: "spiral-stairwell", name: "Spiral Stairwell", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(true, true, true, true), weight: 1, symbol: "none" },
+  { id: "gymnasium", name: "Gymnasium", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(true, false, true, true), weight: 1, symbol: "none", turnEndBuff: "speed" },
+  { id: "library", name: "Library", pool: "upper", allowedFloors: ["upper"], doors: makeDoors(false, true, true, true), weight: 1, symbol: "none", turnEndBuff: "knowledge" },
+  { id: "wine-cellar", name: "Wine Cellar", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(true, false, true, true), weight: 3, symbol: "item" },
+  { id: "boiler-room", name: "Boiler Room", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(true, true, false, false), weight: 2, symbol: "event" },
+  { id: "vault", name: "Vault", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(false, true, true, false), weight: 2, symbol: "none", isLocked: true },
+  { id: "flooded-tunnels", name: "Flooded Tunnels", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(true, false, false, true), weight: 2, symbol: "event" },
+  { id: "ritual-chamber", name: "Ritual Chamber", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(false, true, false, true), weight: 1, symbol: "omen" },
+  { id: "collapsed-passage", name: "Collapsed Passage", pool: "basement", allowedFloors: ["basement"], doors: makeDoors(true, true, false, true), weight: 2, symbol: "item" },
 ];
 
 export const TILE_BY_ID: Record<string, TileTemplate> = Object.fromEntries(
@@ -120,24 +142,9 @@ export function createStarterTiles(): Tile[] {
     { templateId: "basement-landing", floor: "basement", x: 0, y: 0 },
   ];
 
-  return placements.map(({ templateId, floor, x, y }) => {
-    const template = TILE_BY_ID[templateId];
-    const isStart = template.special === "entrance-hall";
-    return {
-      id: createTileId(floor, x, y),
-      templateId,
-      name: template.name,
-      pool: template.pool,
-      floor,
-      x,
-      y,
-      doors: { ...template.doors },
-      visited: isStart,
-      cardResolved: isStart,
-      special: template.special,
-      floorLink: template.floorLink,
-    };
-  });
+  return placements.map(({ templateId, floor, x, y }) =>
+    templateToTile(TILE_BY_ID[templateId], floor, x, y, true)
+  );
 }
 
 export function createShuffledDeck(): string[] {
@@ -185,7 +192,8 @@ export function templateToTile(
   template: TileTemplate,
   floor: Floor,
   x: number,
-  y: number
+  y: number,
+  prePlaced = false
 ): Tile {
   return {
     id: createTileId(floor, x, y),
@@ -196,8 +204,11 @@ export function templateToTile(
     x,
     y,
     doors: { ...template.doors },
-    visited: false,
-    cardResolved: false,
+    visited: prePlaced,
+    cardResolved: prePlaced,
+    symbol: template.symbol,
+    isLocked: template.isLocked,
+    turnEndBuff: template.turnEndBuff,
     special: template.special,
     floorLink: template.floorLink,
   };

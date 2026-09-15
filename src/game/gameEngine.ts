@@ -1,5 +1,9 @@
-import { getCardEffect, getCardTarget } from "./cardData";
-import { createShuffledCardDecks, drawRoomCard } from "./cardEngine";
+import { createShuffledCardDecks } from "./cardEngine";
+import { applyTierAction, resolveWinningTier } from "./eventEngine";
+import {
+  findOpposingOnTile,
+  startCombat,
+} from "./combatEngine";
 import {
   createShuffledDeck,
   createStarterTiles,
@@ -8,6 +12,22 @@ import {
   OPPOSITE,
   templateToTile,
 } from "./tileData";
+import {
+  buildElevatorTile,
+  elevatorDestinationCoords,
+  elevatorFloorFromRoll,
+  getTransitionDestination,
+  getTransitionKind,
+  getTransitionLabel,
+  rollElevatorDestination,
+  transitionCostsAp,
+} from "./roomTransitions";
+import {
+  drawCardForSymbol,
+  handleCoalChuteEnter,
+  handleOnTurnEnd,
+  attemptVaultLockpick as vaultLockpick,
+} from "./roomHandlers";
 import type {
   CharacterTemplate,
   Direction,
@@ -16,6 +36,7 @@ import type {
   PendingCard,
   Phase,
   Player,
+  RoomTransitionKind,
   Stat,
   Tile,
 } from "./types";
@@ -23,7 +44,6 @@ import { startHaunt } from "./hauntEngine";
 import {
   betrayalFaceLabel,
   checkHauntTrigger,
-  checkStatSuccess,
   rollBetrayalDice,
 } from "./diceEngine";
 
@@ -93,6 +113,9 @@ export function createInitialState(): GameState {
     haunt: null,
     combat: null,
     lastOmenRoomTemplateId: null,
+    pendingTransition: null,
+    pendingVaultItems: [],
+    pendingVaultLockpick: null,
   });
 }
 
@@ -146,6 +169,8 @@ export function startGame(
     x: 0,
     y: 0,
     isTraitor: false,
+    guardNextCombat: false,
+    visitedBuffRooms: [],
   }));
 
   return syncOmenFields({
@@ -164,6 +189,9 @@ export function startGame(
     haunt: null,
     combat: null,
     lastOmenRoomTemplateId: null,
+    pendingTransition: null,
+    pendingVaultItems: [],
+    pendingVaultLockpick: null,
     log: [
       "You stand in the Entrance Hall. The door seals behind you.",
       "Explore floor by floor. Uncover Omens—but each one risks the Haunt.",
@@ -189,17 +217,6 @@ export function setViewFloor(state: GameState, floor: Floor): GameState {
   return { ...state, viewFloor: floor };
 }
 
-function applyStatEffect(
-  player: Player,
-  stat: Stat,
-  delta: number
-): Player {
-  return {
-    ...player,
-    [stat]: Math.max(0, player[stat] + delta),
-  };
-}
-
 function updatePlayer(
   players: Player[],
   index: number,
@@ -212,6 +229,17 @@ function beginTurnForPlayer(players: Player[], index: number): Player[] {
   return players.map((p, i) =>
     i === index ? { ...p, ap: p.speed } : p
   );
+}
+
+function applyStatEffect(
+  player: Player,
+  stat: Stat,
+  delta: number
+): Player {
+  return {
+    ...player,
+    [stat]: Math.max(0, player[stat] + delta),
+  };
 }
 
 function initialRollPhase(card: PendingCard["card"]): PendingCard["rollPhase"] {
@@ -240,43 +268,42 @@ export function applyStatRoll(
   const { card } = pending;
   if (card.type !== "event" || !card.stat) return state;
 
-  const target = getCardTarget(card);
   const total = dice.reduce((sum, face) => sum + face, 0);
-  const success = checkStatSuccess(total, target);
+  const playerIndex = state.activePlayerIndex;
+  let next = { ...state };
+  let winningTierIndex = 0;
 
-  let players = [...state.players];
-  let log = [
-    ...state.log,
-    `${state.players[state.activePlayerIndex].name} rolls ${dice.map(betrayalFaceLabel).join(", ")} = ${total} vs ${target}. ${
-      success ? "Success!" : "Failure."
-    }`,
-  ];
+  const rollLine = `${state.players[playerIndex].name} rolls ${dice.map(betrayalFaceLabel).join(", ")} = ${total}.`;
 
-  const effect = getCardEffect(card, success);
-  if (effect) {
-    players = updatePlayer(players, state.activePlayerIndex, (p) =>
-      applyStatEffect(p, effect.stat, effect.delta)
+  if (card.tiers && card.tiers.length > 0) {
+    const { tier, index } = resolveWinningTier(total, card.tiers);
+    winningTierIndex = index;
+    const result = applyTierAction(
+      { ...state, log: [...state.log, rollLine, tier.text] },
+      playerIndex,
+      tier.action
     );
-    log.push(success ? card.successText : card.failureText);
+    next = result.state;
+  } else {
+    next.log = [...state.log, rollLine];
   }
 
-  const tiles = state.tiles.map((t) =>
+  const tiles = next.tiles.map((t) =>
     t.id === pending.tileId ? { ...t, cardResolved: true } : t
   );
 
   return {
-    ...state,
-    players,
+    ...next,
     tiles,
     pendingCard: {
       ...pending,
       statDice: dice,
       roll: total,
-      success,
+      success: true,
       rollPhase: "complete",
       resolved: true,
+      winningTierIndex,
     },
-    log,
   };
 }
 
@@ -299,7 +326,7 @@ export function applyHauntRoll(
   ];
 
   if (card.omenStatBonus) {
-    players = updatePlayer(players, state.activePlayerIndex, (p) =>
+    players = updatePlayer(state.players, state.activePlayerIndex, (p) =>
       applyStatEffect(p, card.omenStatBonus!.stat, card.omenStatBonus!.delta)
     );
   }
@@ -342,7 +369,6 @@ export function applyHauntRoll(
   return { ...next, log };
 }
 
-/** @deprecated Use applyHauntRoll */
 export function applyCrisisRoll(
   state: GameState,
   pending: PendingCard,
@@ -394,6 +420,15 @@ export function resolveItemCard(
 }
 
 export function dismissCard(state: GameState): GameState {
+  if (state.pendingVaultItems.length > 0) {
+    const [nextCard, ...rest] = state.pendingVaultItems;
+    return {
+      ...state,
+      pendingCard: nextCard,
+      pendingVaultItems: rest,
+    };
+  }
+
   const active = getActivePlayer(state);
   const nextIndex = (state.activePlayerIndex + 1) % state.players.length;
   const players = beginTurnForPlayer(state.players, nextIndex);
@@ -410,6 +445,18 @@ export function dismissCard(state: GameState): GameState {
       `${active.name} ends their turn. ${next.name} steps forward.`,
     ],
   };
+}
+
+function maybeTriggerHauntCombat(
+  state: GameState,
+  active: Player,
+  floor: Floor,
+  x: number,
+  y: number
+): GameState {
+  const opponent = findOpposingOnTile(state, active, floor, x, y);
+  if (!opponent || state.combat) return state;
+  return startCombat(state, opponent.id, "player", false);
 }
 
 export function movePlayer(
@@ -435,6 +482,7 @@ export function movePlayer(
   let log = [...state.log];
   let pendingCard: PendingCard | null = state.pendingCard;
   let cardDecks = state.cardDecks;
+  let pendingVaultLockpick = state.pendingVaultLockpick;
 
   const existing = getTileAt(tiles, active.floor, nx, ny);
   if (!existing) {
@@ -456,35 +504,44 @@ export function movePlayer(
 
   const targetTile = getTileAt(tiles, active.floor, nx, ny)!;
   const isNewDiscovery = !targetTile.visited;
+  const symbol = targetTile.symbol;
+
+  let newAp = active.ap - 1;
+  if (isNewDiscovery && symbol !== "none") {
+    newAp = 0;
+  }
 
   let players = updatePlayer(state.players, state.activePlayerIndex, (p) => ({
     ...p,
     x: nx,
     y: ny,
-    ap: isNewDiscovery ? 0 : p.ap - 1,
+    ap: newAp,
   }));
 
-  if (isNewDiscovery && state.phase === "exploration") {
+  if (isNewDiscovery) {
     tiles = tiles.map((t) =>
       t.id === targetTile.id ? { ...t, visited: true } : t
     );
-    const draw = drawRoomCard({ ...state, cardDecks });
-    cardDecks = draw.cardDecks;
-    if (draw.card) {
-      pendingCard = createPendingCard(draw.card, targetTile.id);
-      log.push(`A ${draw.type} card is drawn: "${draw.card.title}".`);
-      if (draw.type === "omen") {
-        log.push("An Omen! A Haunt Roll will follow immediately.");
+
+    if (symbol !== "none") {
+      const drawResult = drawCardForSymbol(
+        { ...state, cardDecks, log },
+        symbol,
+        targetTile.id
+      );
+      cardDecks = drawResult.state.cardDecks;
+      log = drawResult.state.log;
+      if (drawResult.pendingCard) {
+        pendingCard = drawResult.pendingCard;
       }
-      log.push(`${active.name} must resolve the room before moving again.`);
     }
-  } else if (isNewDiscovery) {
-    tiles = tiles.map((t) =>
-      t.id === targetTile.id ? { ...t, visited: true } : t
-    );
+
+    if (targetTile.templateId === "vault" && targetTile.isLocked) {
+      pendingVaultLockpick = targetTile.id;
+    }
   }
 
-  return {
+  let next: GameState = {
     ...state,
     players,
     tiles,
@@ -492,63 +549,189 @@ export function movePlayer(
     cardDecks,
     log,
     pendingCard,
+    pendingVaultLockpick,
     viewFloor: active.floor,
   };
+
+  if (targetTile.special === "coal-chute") {
+    next = handleCoalChuteEnter(next, state.activePlayerIndex);
+    players = next.players;
+  }
+
+  next = maybeTriggerHauntCombat(next, players[state.activePlayerIndex], active.floor, nx, ny);
+  return next;
 }
 
-export function useFloorTransition(state: GameState): GameState {
+export function beginRoomTransition(state: GameState): GameState {
   const movablePhases: Phase[] = ["exploration", "HAUNT_ACTIVE"];
   if (!movablePhases.includes(state.phase) || state.pendingCard || state.combat)
     return state;
 
   const active = getActivePlayer(state);
-  if (active.ap <= 0) return state;
-
   const currentTile = getTileAt(state.tiles, active.floor, active.x, active.y);
-  if (!currentTile?.floorLink) return state;
+  if (!currentTile) return state;
 
-  const link = currentTile.floorLink;
-  const dest = getTileAt(state.tiles, link.floor, link.x, link.y);
+  const kind = getTransitionKind(currentTile);
+  if (!kind) return state;
+
+  const apCost = transitionCostsAp(kind);
+  if (active.ap < apCost) return state;
+
+  if (kind === "mystic-elevator") {
+    return {
+      ...state,
+      pendingTransition: { kind, tileId: currentTile.id },
+    };
+  }
+
+  return applyRoomTransition(state, kind);
+}
+
+export function completeElevatorTransition(
+  state: GameState,
+  elevatorDice?: number[],
+  floorPick?: Floor
+): GameState {
+  return applyRoomTransition(state, "mystic-elevator", elevatorDice, floorPick);
+}
+
+export function applyRoomTransition(
+  state: GameState,
+  kind: RoomTransitionKind,
+  elevatorDice?: number[],
+  floorPick?: Floor
+): GameState {
+  const active = getActivePlayer(state);
+  const currentTile = getTileAt(state.tiles, active.floor, active.x, active.y);
+  if (!currentTile) return state;
+
+  const apCost = transitionCostsAp(kind);
+  if (active.ap < apCost) return state;
+
+  let tiles = [...state.tiles];
+  let players = [...state.players];
+  let log = [...state.log];
+  const playerIndex = state.activePlayerIndex;
+
+  if (kind === "mystic-elevator") {
+    const rolled = elevatorDice
+      ? {
+          dice: elevatorDice,
+          total: elevatorDice.reduce((s, d) => s + d, 0),
+          floor: elevatorFloorFromRoll(
+            elevatorDice.reduce((s, d) => s + d, 0)
+          ),
+        }
+      : rollElevatorDestination();
+    const roll = { ...rolled, floor: floorPick ?? rolled.floor };
+
+    const coords = elevatorDestinationCoords(roll.floor, tiles, currentTile.doors);
+    tiles = tiles.filter((t) => t.id !== currentTile.id);
+    const elevatorTile = buildElevatorTile(
+      coords.floor,
+      coords.x,
+      coords.y,
+      currentTile.doors
+    );
+    if (!tiles.some((t) => t.id === elevatorTile.id)) {
+      tiles.push(elevatorTile);
+    }
+
+    players = updatePlayer(players, playerIndex, (p) => ({
+      ...p,
+      floor: coords.floor,
+      x: coords.x,
+      y: coords.y,
+      ap: p.ap - apCost,
+    }));
+
+    const floorLabel =
+      roll.floor === "basement"
+        ? "Basement"
+        : roll.floor === "upper"
+          ? "Upper"
+          : "Ground";
+    log.push(
+      `${active.name} rides the Mystic Elevator (${roll.dice.map(betrayalFaceLabel).join(", ")} = ${roll.total}) to the ${floorLabel} floor.`
+    );
+
+    let next: GameState = {
+      ...state,
+      players,
+      tiles,
+      viewFloor: coords.floor,
+      pendingTransition: null,
+      log,
+    };
+    const moved = players[playerIndex];
+    next = maybeTriggerHauntCombat(next, moved, moved.floor, moved.x, moved.y);
+    return next;
+  }
+
+  const dest = getTransitionDestination(kind, currentTile);
   if (!dest) return state;
 
-  const label =
-    currentTile.special === "coal-chute"
-      ? "slides down the Coal Chute"
-      : currentTile.special === "grand-staircase"
-        ? "climbs the Grand Staircase"
-        : currentTile.special === "upper-landing"
-          ? "descends to the Grand Staircase"
-          : `moves to the ${link.floor} floor`;
+  const destTile = getTileAt(tiles, dest.floor, dest.x, dest.y);
+  if (!destTile && kind !== "coal-chute") return state;
 
-  const players = updatePlayer(state.players, state.activePlayerIndex, (p) => ({
+  players = updatePlayer(players, playerIndex, (p) => ({
     ...p,
-    floor: link.floor,
-    x: link.x,
-    y: link.y,
-    ap: p.ap - 1,
+    floor: dest.floor,
+    x: dest.x,
+    y: dest.y,
+    ap: p.ap - apCost,
   }));
 
-  return {
+  const label = getTransitionLabel(kind);
+  log.push(`${active.name}: ${label.replace(/ \(.*\)/, "")}.`);
+
+  let next: GameState = {
     ...state,
     players,
-    viewFloor: link.floor,
-    log: [...state.log, `${active.name} ${label} (1 AP).`],
+    viewFloor: dest.floor,
+    pendingTransition: null,
+    log,
   };
+  const moved = players[playerIndex];
+  next = maybeTriggerHauntCombat(next, moved, dest.floor, dest.x, dest.y);
+  return next;
+}
+
+/** @deprecated Use beginRoomTransition / applyRoomTransition */
+export function useFloorTransition(state: GameState): GameState {
+  return beginRoomTransition(state);
+}
+
+export function attemptVaultLockpick(state: GameState): GameState {
+  const result = vaultLockpick(state, state.activePlayerIndex);
+  return { ...result, pendingVaultLockpick: null };
+}
+
+export function dismissVaultLockpick(state: GameState): GameState {
+  return { ...state, pendingVaultLockpick: null };
 }
 
 export function endTurn(state: GameState): GameState {
   const turnPhases: Phase[] = ["exploration", "HAUNT_ACTIVE"];
-  if (!turnPhases.includes(state.phase) || state.pendingCard || state.combat)
+  if (
+    !turnPhases.includes(state.phase) ||
+    state.pendingCard ||
+    state.combat ||
+    state.pendingTransition ||
+    state.pendingVaultLockpick
+  )
     return state;
-  const nextIndex = (state.activePlayerIndex + 1) % state.players.length;
-  const players = beginTurnForPlayer(state.players, nextIndex);
-  const next = players[nextIndex];
+
+  let next = handleOnTurnEnd(state, state.activePlayerIndex);
+  const nextIndex = (next.activePlayerIndex + 1) % next.players.length;
+  const players = beginTurnForPlayer(next.players, nextIndex);
+  const activePlayer = players[nextIndex];
   return {
-    ...state,
+    ...next,
     players,
     activePlayerIndex: nextIndex,
-    viewFloor: next.floor,
-    log: [...state.log, `${next.name} takes a fresh turn (${next.ap} AP).`],
+    viewFloor: activePlayer.floor,
+    log: [...next.log, `${activePlayer.name} takes a fresh turn (${activePlayer.ap} AP).`],
   };
 }
 

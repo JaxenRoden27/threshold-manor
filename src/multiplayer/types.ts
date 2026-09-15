@@ -36,7 +36,11 @@ export type GameAction =
   | { kind: "haunt-action"; actionId: string }
   | { kind: "start-combat"; defenderId: string; defenderType: "player" | "monster"; mental?: boolean }
   | { kind: "roll-combat" }
-  | { kind: "dismiss-combat" };
+  | { kind: "allocate-combat-damage"; allocation: import("@/game/types").DamageAllocation }
+  | { kind: "dismiss-combat" }
+  | { kind: "complete-elevator"; dice?: number[]; floorPick?: "ground" | "upper" | "basement" }
+  | { kind: "attempt-vault-lockpick" }
+  | { kind: "dismiss-vault" };
 
 export type NetMessage =
   | { type: "lobby-update"; lobby: LobbyState }

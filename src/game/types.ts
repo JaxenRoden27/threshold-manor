@@ -10,6 +10,7 @@ export type Floor = "ground" | "upper" | "basement";
 export type TilePool = Floor;
 export type Direction = "north" | "south" | "east" | "west";
 export type CardType = "event" | "item" | "omen";
+export type TileSymbol = "event" | "item" | "omen" | "none";
 export type DeckType = "events" | "items" | "omens";
 export type TraitorSelection = "random" | "lowest-sanity" | "highest-knowledge";
 
@@ -19,7 +20,32 @@ export type TileSpecial =
   | "grand-staircase"
   | "upper-landing"
   | "coal-chute"
-  | "basement-landing";
+  | "basement-landing"
+  | "mystic-elevator";
+
+export type EventTierRange = "0-1" | "2-3" | "4+";
+
+export interface EventTierAction {
+  stat?: Stat;
+  delta?: number;
+  itemId?: string;
+  message?: string;
+  guard?: boolean;
+  teleportFloor?: Floor;
+}
+
+export interface EventTier {
+  range: EventTierRange;
+  text: string;
+  action: EventTierAction;
+}
+
+export type RoomTransitionKind =
+  | "grand-staircase"
+  | "upper-landing"
+  | "coal-chute"
+  | "basement-stairs"
+  | "mystic-elevator";
 
 export interface CharacterTemplate {
   id: string;
@@ -46,6 +72,8 @@ export interface Player {
   x: number;
   y: number;
   isTraitor: boolean;
+  guardNextCombat: boolean;
+  visitedBuffRooms: string[];
 }
 
 export interface Doors {
@@ -74,6 +102,10 @@ export interface Tile {
   cardResolved: boolean;
   special?: TileSpecial;
   floorLink?: FloorLink;
+  noCardDraw?: boolean;
+  symbol: TileSymbol;
+  isLocked?: boolean;
+  turnEndBuff?: Stat;
 }
 
 export interface CardEffect {
@@ -86,7 +118,9 @@ export interface Card {
   type: CardType;
   title: string;
   description: string;
+  flavor?: string;
   stat?: Stat;
+  tiers?: EventTier[];
   target?: number;
   difficulty?: number;
   successText: string;
@@ -140,6 +174,7 @@ export interface PendingCard {
   crisisDice?: number[];
   roll?: number;
   success?: boolean;
+  winningTierIndex?: number;
 }
 
 export interface HauntAction {
@@ -186,7 +221,20 @@ export interface HauntState {
   briefingDismissed: boolean;
 }
 
-export type CombatPhase = "select-target" | "rolling" | "resolved";
+export type CombatPhase =
+  | "select-target"
+  | "rolling"
+  | "allocate-damage"
+  | "resolved";
+
+export type DamagePool = "physical" | "mental";
+
+export interface DamageAllocation {
+  might?: number;
+  speed?: number;
+  sanity?: number;
+  knowledge?: number;
+}
 
 export interface CombatState {
   attackerId: string;
@@ -194,12 +242,18 @@ export interface CombatState {
   defenderType: "player" | "monster";
   attackStat: Stat;
   defenseStat: Stat;
+  mental: boolean;
   phase: CombatPhase;
   attackerDice?: number[];
   defenderDice?: number[];
   attackerTotal?: number;
   defenderTotal?: number;
   damage?: number;
+  winnerId?: string;
+  loserId?: string;
+  damagePool?: DamagePool;
+  flankingBonus?: number;
+  guardBonus?: number;
   log: string[];
 }
 
@@ -230,4 +284,11 @@ export interface GameState {
   haunt: HauntState | null;
   combat: CombatState | null;
   lastOmenRoomTemplateId: string | null;
+  pendingTransition: {
+    kind: RoomTransitionKind;
+    tileId: string;
+    traitorFloorPick?: Floor;
+  } | null;
+  pendingVaultItems: PendingCard[];
+  pendingVaultLockpick: string | null;
 }
