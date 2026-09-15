@@ -1,5 +1,5 @@
 import { CARD_BY_ID, EVENT_CARDS, ITEM_CARDS, OMEN_CARDS } from "./cardData";
-import type { Card, CardDecks, CardType, DeckType, GameState } from "./types";
+import type { Card, CardDecks, DeckType, GameState } from "./types";
 
 function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr];
@@ -10,98 +10,109 @@ function shuffle<T>(arr: T[]): T[] {
   return copy;
 }
 
+/** Unique 1-of-1 card decks — one instance per card id. */
 export function createShuffledCardDecks(): CardDecks {
   return {
-    eventsDeck: shuffle(EVENT_CARDS.map((c) => c.id)),
-    itemsDeck: shuffle(ITEM_CARDS.map((c) => c.id)),
-    omensDeck: shuffle(OMEN_CARDS.map((c) => c.id)),
-    eventsDiscard: [],
-    itemsDiscard: [],
-    omensDiscard: [],
+    eventDeck: shuffle(EVENT_CARDS.map((c) => c.id)),
+    eventDiscardPile: [],
+    itemDeck: shuffle(ITEM_CARDS.map((c) => c.id)),
+    omenDeck: shuffle(OMEN_CARDS.map((c) => c.id)),
   };
 }
 
-function deckKey(type: DeckType): keyof CardDecks {
+function deckField(type: DeckType): "eventDeck" | "itemDeck" | "omenDeck" {
   switch (type) {
     case "events":
-      return "eventsDeck";
+      return "eventDeck";
     case "items":
-      return "itemsDeck";
+      return "itemDeck";
     case "omens":
-      return "omensDeck";
+      return "omenDeck";
   }
 }
 
-function discardKey(type: DeckType): keyof CardDecks {
-  switch (type) {
-    case "events":
-      return "eventsDiscard";
-    case "items":
-      return "itemsDiscard";
-    case "omens":
-      return "omensDiscard";
+function reshuffleEventsIfNeeded(decks: CardDecks): CardDecks {
+  if (decks.eventDeck.length > 0 || decks.eventDiscardPile.length === 0) {
+    return decks;
   }
-}
-
-function reshuffleIfEmpty(decks: CardDecks, type: DeckType): CardDecks {
-  const deckField = deckKey(type);
-  const discardField = discardKey(type);
-  if (decks[deckField].length > 0) return decks;
-  if (decks[discardField].length === 0) return decks;
   return {
     ...decks,
-    [deckField]: shuffle([...decks[discardField]]),
-    [discardField]: [],
+    eventDeck: shuffle([...decks.eventDiscardPile]),
+    eventDiscardPile: [],
   };
 }
 
+/**
+ * Pop/splice the next playable card from the active deck.
+ * Skips ids already in drawnCardIds. Items/omens leave the deck permanently.
+ * Events reshuffle from eventDiscardPile only when eventDeck is empty.
+ */
+export function drawCard(
+  state: GameState,
+  type: DeckType
+): { card: Card | null; state: GameState } {
+  let cardDecks = type === "events" ? reshuffleEventsIfNeeded(state.cardDecks) : state.cardDecks;
+  const field = deckField(type);
+  const deck = [...cardDecks[field]];
+  const drawn = new Set(state.drawnCardIds);
+
+  let card: Card | null = null;
+  const remaining: string[] = [];
+
+  for (const id of deck) {
+    if (card) {
+      remaining.push(id);
+      continue;
+    }
+    if (drawn.has(id)) continue;
+    const found = CARD_BY_ID[id];
+    if (!found) continue;
+    card = { ...found };
+    drawn.add(id);
+  }
+
+  return {
+    card,
+    state: {
+      ...state,
+      cardDecks: { ...cardDecks, [field]: remaining },
+      drawnCardIds: [...drawn],
+    },
+  };
+}
+
+/** After an event is fully resolved, move it to the discard pile (reshuffled only when deck empty). */
+export function discardResolvedEvent(
+  cardDecks: CardDecks,
+  cardId: string
+): CardDecks {
+  if (cardDecks.eventDiscardPile.includes(cardId)) return cardDecks;
+  return {
+    ...cardDecks,
+    eventDiscardPile: [...cardDecks.eventDiscardPile, cardId],
+  };
+}
+
+/** @deprecated Use drawCard */
 export function drawFromDeck(
   decks: CardDecks,
   type: DeckType
 ): { card: Card | null; decks: CardDecks } {
-  let next = reshuffleIfEmpty(decks, type);
-  const deckField = deckKey(type);
-  const discardField = discardKey(type);
-  const deck = [...next[deckField]];
+  const field = deckField(type);
+  const deck = [...decks[field]];
   const id = deck.shift();
-  if (!id) return { card: null, decks: next };
+  if (!id) return { card: null, decks };
   const card = CARD_BY_ID[id];
-  if (!card) return { card: null, decks: next };
-  next = {
-    ...next,
-    [deckField]: deck,
-    [discardField]: [...next[discardField], id],
+  if (!card) return { card: null, decks: { ...decks, [field]: deck } };
+  return {
+    card: { ...card },
+    decks: { ...decks, [field]: deck },
   };
-  return { card: { ...card }, decks: next };
 }
 
-export function drawCardType(): CardType {
+export function drawCardType(): "event" | "item" | "omen" {
   const roll = Math.random();
   if (roll < 0.42) return "event";
   if (roll < 0.72) return "item";
   return "omen";
-}
-
-export function drawRoomCard(state: GameState): {
-  card: Card | null;
-  cardDecks: CardDecks;
-  type: CardType;
-} {
-  const type = drawCardType();
-  const deckType: DeckType =
-    type === "event" ? "events" : type === "item" ? "items" : "omens";
-  const { card, decks } = drawFromDeck(state.cardDecks, deckType);
-  return { card, cardDecks: decks, type };
-}
-
-/** @deprecated Use drawRoomCard */
-export function drawCard(type: CardType): Card {
-  const ids =
-    type === "event"
-      ? EVENT_CARDS.map((c) => c.id)
-      : type === "item"
-        ? ITEM_CARDS.map((c) => c.id)
-        : OMEN_CARDS.map((c) => c.id);
-  const id = ids[Math.floor(Math.random() * ids.length)];
-  return { ...CARD_BY_ID[id] };
 }

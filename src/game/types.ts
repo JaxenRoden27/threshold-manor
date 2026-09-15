@@ -24,7 +24,11 @@ export type TileSpecial =
   | "mystic-elevator"
   | "collapsed-room"
   | "chasm"
-  | "catacombs";
+  | "catacombs"
+  | "basement-stairs"
+  | "secret-passage"
+  | "secret-stairs"
+  | "gallery";
 
 export interface BarrierStat {
   stat: Stat;
@@ -52,7 +56,32 @@ export type RoomTransitionKind =
   | "grand-staircase"
   | "upper-landing"
   | "coal-chute"
-  | "basement-stairs";
+  | "basement-stairs"
+  | "stairs-up"
+  | "stairs-down";
+
+export type VerticalDropKind = "coal-chute" | "collapsed-room" | "gallery";
+
+export interface VerticalDrop {
+  id: string;
+  kind: VerticalDropKind;
+  from: { floor: Floor; x: number; y: number };
+  to: { floor: Floor; x: number; y: number };
+}
+
+export interface PassageToken {
+  id: string;
+  tileId: string;
+  floor: Floor;
+  x: number;
+  y: number;
+  roomName: string;
+}
+
+export interface StairsLink {
+  basement: { floor: Floor; x: number; y: number };
+  foyer: { floor: Floor; x: number; y: number };
+}
 
 export interface CharacterTemplate {
   id: string;
@@ -157,12 +186,10 @@ export interface ItemDefinition {
 }
 
 export interface CardDecks {
-  eventsDeck: string[];
-  itemsDeck: string[];
-  omensDeck: string[];
-  eventsDiscard: string[];
-  itemsDiscard: string[];
-  omensDiscard: string[];
+  eventDeck: string[];
+  eventDiscardPile: string[];
+  itemDeck: string[];
+  omenDeck: string[];
 }
 
 export type CardRollPhase =
@@ -289,8 +316,13 @@ export interface GameState {
   log: string[];
   puzzle: PuzzleState | null;
   selectedPlayerCount: number;
-  tileDeck: string[];
+  /** Unique 1-of-1 exploration room deck; placed rooms never return. */
+  roomDeck: string[];
   cardDecks: CardDecks;
+  placedRoomIds: string[];
+  drawnCardIds: string[];
+  /** Omen card ids drawn and still in play (never reshuffled). */
+  activeGameOmenIds: string[];
   haunt: HauntState | null;
   combat: CombatState | null;
   lastOmenRoomTemplateId: string | null;
@@ -310,4 +342,11 @@ export interface GameState {
     dice?: number[];
     total?: number;
   } | null;
+  verticalDrops: VerticalDrop[];
+  passageTokens: PassageToken[];
+  stairsLink: StairsLink | null;
+  pendingVertical:
+    | { mode: "portal-select"; fromTokenId: string }
+    | { mode: "hidden-latch" }
+    | null;
 }

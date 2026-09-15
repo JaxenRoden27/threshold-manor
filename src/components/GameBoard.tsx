@@ -6,6 +6,7 @@ import { useMultiplayerStore } from "@/store/multiplayerStore";
 import { useGameActions } from "@/hooks/useGameActions";
 import type { Direction, Floor, Player, Tile } from "@/game/types";
 import { DIRECTION_DELTA, FLOOR_LABELS } from "@/game/tileData";
+import { getVerticalMoveOptions } from "@/game/verticalTraversal";
 import {
   TILE_RENDER_SIZE,
   TileRenderer,
@@ -34,17 +35,19 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 export function GameBoard() {
+  const gameState = useGameStore();
   const {
     tiles,
     players,
     activePlayerIndex,
     phase,
     viewFloor,
-  } = useGameStore();
+  } = gameState;
   const {
     move,
     useFloorTransition,
     activateElevator,
+    performVerticalMove,
     setViewFloor,
     endTurn,
     canAct,
@@ -116,7 +119,8 @@ export function GameBoard() {
         state.combat ||
         state.pendingTransition ||
         state.pendingVaultLockpick ||
-        state.pendingElevator;
+        state.pendingElevator ||
+        state.pendingVertical;
 
       if (
         (e.key === " " || e.code === "Space") &&
@@ -196,6 +200,11 @@ export function GameBoard() {
     !modalBlocked() &&
     active?.floor === viewFloor &&
     canAct();
+
+  const verticalOptions = useMemo(() => {
+    if (!active || modalBlocked() || !canAct()) return [];
+    return getVerticalMoveOptions(gameState, activePlayerIndex);
+  }, [active, activePlayerIndex, gameState, canAct, modalBlocked]);
 
   const width =
     (bounds.maxX - bounds.minX + 1) * TILE_RENDER_SIZE + MAP_PADDING * 2;
@@ -306,6 +315,21 @@ export function GameBoard() {
         >
           Activate Mystic Elevator
         </Button>
+      )}
+
+      {verticalOptions.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {verticalOptions.map((option) => (
+            <Button
+              key={option.id}
+              variant="outline"
+              className="w-full border-emerald-700 text-emerald-200"
+              onClick={() => performVerticalMove(option.id)}
+            >
+              {option.label}
+            </Button>
+          ))}
+        </div>
       )}
 
       {canMove && availableDirections.length > 0 && (

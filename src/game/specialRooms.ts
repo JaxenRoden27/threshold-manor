@@ -1,4 +1,5 @@
 import { OPPOSITE } from "./tileData";
+import { registerVerticalDrop } from "./verticalTraversal";
 import type { Direction, Floor, GameState, Player, Stat, Tile } from "./types";
 
 const FLOOR_BELOW: Partial<Record<Floor, Floor>> = {
@@ -32,14 +33,15 @@ function isTileEmpty(
 
 export function handleCoalChuteEnter(
   state: GameState,
-  playerIndex: number
+  playerIndex: number,
+  sourceTile: Tile
 ): GameState {
   const player = state.players[playerIndex];
   const dest = BASEMENT_LANDING;
   const players = state.players.map((p, i) =>
     i === playerIndex ? { ...p, floor: dest.floor, x: dest.x, y: dest.y } : p
   );
-  return {
+  let next: GameState = {
     ...state,
     players,
     viewFloor: dest.floor,
@@ -48,6 +50,55 @@ export function handleCoalChuteEnter(
       `${player.name} plummets down the Coal Chute to the Basement Landing!`,
     ],
   };
+  next = registerVerticalDrop(next, "coal-chute", {
+    floor: sourceTile.floor,
+    x: sourceTile.x,
+    y: sourceTile.y,
+  }, dest);
+  return next;
+}
+
+export function handleGalleryEnter(
+  state: GameState,
+  playerIndex: number,
+  tile: Tile
+): GameState {
+  const player = state.players[playerIndex];
+  const belowFloor = FLOOR_BELOW[tile.floor];
+  let dest = BASEMENT_LANDING;
+
+  if (belowFloor) {
+    const belowTile = tileAt(state.tiles, belowFloor, tile.x, tile.y);
+    if (
+      belowTile &&
+      isTileEmpty(state.tiles, state.players, belowFloor, tile.x, tile.y, player.id)
+    ) {
+      dest = { floor: belowFloor, x: tile.x, y: tile.y };
+    }
+  }
+
+  const players = state.players.map((p, i) =>
+    i === playerIndex
+      ? { ...p, floor: dest.floor, x: dest.x, y: dest.y }
+      : p
+  );
+
+  let next: GameState = {
+    ...state,
+    players,
+    viewFloor: dest.floor,
+    log: [
+      ...state.log,
+      `${player.name} crashes through the Portrait Gallery floor!`,
+    ],
+  };
+
+  return registerVerticalDrop(
+    next,
+    "gallery",
+    { floor: tile.floor, x: tile.x, y: tile.y },
+    dest
+  );
 }
 
 export function handleCollapsedRoomEnter(
@@ -67,54 +118,52 @@ export function handleCollapsedRoomEnter(
   }
 
   const belowFloor = FLOOR_BELOW[tile.floor];
+  let dest = BASEMENT_LANDING;
+
   if (belowFloor) {
     const belowTile = tileAt(state.tiles, belowFloor, tile.x, tile.y);
     if (
       belowTile &&
       isTileEmpty(state.tiles, state.players, belowFloor, tile.x, tile.y, player.id)
     ) {
-      const players = state.players.map((p, i) =>
-        i === playerIndex
-          ? { ...p, floor: belowFloor, x: tile.x, y: tile.y }
-          : p
-      );
-      return {
-        ...state,
-        players,
-        viewFloor: belowFloor,
-        log: [
-          ...state.log,
-          `${player.name} crashes through the Collapsed Room and falls to the ${belowFloor} floor!`,
-        ],
-      };
+      dest = { floor: belowFloor, x: tile.x, y: tile.y };
     }
-  }
-
-  const dest = BASEMENT_LANDING;
-  if (isTileEmpty(state.tiles, state.players, dest.floor, dest.x, dest.y, player.id)) {
-    const players = state.players.map((p, i) =>
-      i === playerIndex
-        ? { ...p, floor: dest.floor, x: dest.x, y: dest.y }
-        : p
-    );
+  } else if (
+    isTileEmpty(state.tiles, state.players, dest.floor, dest.x, dest.y, player.id)
+  ) {
+    dest = BASEMENT_LANDING;
+  } else {
     return {
       ...state,
-      players,
-      viewFloor: dest.floor,
       log: [
         ...state.log,
-        `${player.name} plunges through the Collapsed Room to the Basement Landing!`,
+        `${player.name} is trapped in the Collapsed Room — the way down is blocked.`,
       ],
     };
   }
 
-  return {
+  const players = state.players.map((p, i) =>
+    i === playerIndex
+      ? { ...p, floor: dest.floor, x: dest.x, y: dest.y }
+      : p
+  );
+
+  let next: GameState = {
     ...state,
+    players,
+    viewFloor: dest.floor,
     log: [
       ...state.log,
-      `${player.name} is trapped in the Collapsed Room — the way down is blocked.`,
+      `${player.name} plunges through the Collapsed Room!`,
     ],
   };
+
+  return registerVerticalDrop(
+    next,
+    "collapsed-room",
+    { floor: tile.floor, x: tile.x, y: tile.y },
+    dest
+  );
 }
 
 export function getBarrierExitDirections(tile: Tile): Direction[] {
@@ -144,20 +193,14 @@ export function isBarrierCrossing(
   );
 }
 
-export function canCrossBarrier(
-  player: Player,
-  tile: Tile
-): boolean {
+export function canCrossBarrier(player: Player, tile: Tile): boolean {
   if (!tile.barrierStat) return true;
   const stat = tile.barrierStat.stat;
   const min = tile.barrierStat.min;
   return player[stat] >= min;
 }
 
-export function barrierFailMessage(
-  player: Player,
-  tile: Tile
-): string {
+export function barrierFailMessage(player: Player, tile: Tile): string {
   const { stat, min } = tile.barrierStat!;
   return `${player.name} cannot cross the ${tile.name} (${stat} ${min}+ required, has ${player[stat]}).`;
 }
@@ -171,18 +214,3 @@ export function withEnteredFrom(
     i === playerIndex ? { ...p, enteredFrom: fromDirection } : p
   );
 }
-
-export function isSpecialRoom(tile: Tile): boolean {
-  return Boolean(
-    tile.special === "coal-chute" ||
-      tile.special === "collapsed-room" ||
-      tile.special === "chasm" ||
-      tile.special === "catacombs" ||
-      tile.barrierStat
-  );
-}
-
-export const BARRIER_ROOM_STATS: Record<string, { stat: Stat; min: number }> = {
-  chasm: { stat: "might", min: 4 },
-  catacombs: { stat: "might", min: 4 },
-};

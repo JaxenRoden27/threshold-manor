@@ -48,6 +48,18 @@ export function useGameActions() {
         case "dismiss-vault":
           store.dismissVaultLockpick();
           break;
+        case "vertical-move":
+          store.performVerticalMove(action.optionId);
+          break;
+        case "portal-teleport":
+          store.performPortalTeleport(action.toTokenId);
+          break;
+        case "attempt-hidden-latch":
+          store.performHiddenLatch();
+          break;
+        case "dismiss-vertical":
+          store.dismissVerticalModal();
+          break;
         case "rotate-sigil":
           store.rotatePuzzleSigil(action.index);
           break;
@@ -110,6 +122,14 @@ export function useGameActions() {
       guardDispatch({ kind: "attempt-vault-lockpick" }),
     dismissVaultLockpick: () =>
       guardDispatch({ kind: "dismiss-vault" }, false),
+    performVerticalMove: (optionId: string) =>
+      guardDispatch({ kind: "vertical-move", optionId }),
+    performPortalTeleport: (toTokenId: string) =>
+      guardDispatch({ kind: "portal-teleport", toTokenId }),
+    performHiddenLatch: () =>
+      guardDispatch({ kind: "attempt-hidden-latch" }),
+    dismissVerticalModal: () =>
+      guardDispatch({ kind: "dismiss-vertical" }, false),
     rotatePuzzleSigil: (index: number) =>
       guardDispatch({ kind: "rotate-sigil", index }),
     dismissHauntBriefing: () =>
@@ -135,7 +155,8 @@ export function useGameActions() {
           state().combat ||
           state().pendingTransition ||
           state().pendingVaultLockpick ||
-          state().pendingElevator
+          state().pendingElevator ||
+          state().pendingVertical
       ),
   };
 }

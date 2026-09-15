@@ -54,6 +54,11 @@ export const ITEM_DEFINITIONS: Record<string, ItemDefinition> = {
     combatAttackBonus: 2,
     mentalAttack: true,
   },
+  "item-rope": {
+    id: "item-rope",
+    name: "Climbing Rope",
+    description: "Climb back up one-way drops and chutes.",
+  },
 };
 
 export const EVENT_CARDS: Card[] = [
@@ -275,6 +280,15 @@ export const ITEM_CARDS: Card[] = [
     failureText: "",
     onSuccess: { stat: "speed", delta: 2 },
     itemReward: "item-boots",
+  },
+  {
+    id: "item-rope",
+    type: "item",
+    title: "Climbing Rope",
+    description: "A coiled rope with iron hooks. Climb back up one-way drops and chutes.",
+    successText: "You coil the rope at your belt — ready to climb out of a dead drop.",
+    failureText: "",
+    itemReward: "item-rope",
   },
 ];
 

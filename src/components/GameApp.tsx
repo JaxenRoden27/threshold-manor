@@ -10,6 +10,7 @@ import { GameSidebar } from "./GameSidebar";
 import { CardModal } from "./CardModal";
 import { CombatModal } from "./CombatModal";
 import { MysticElevatorModal } from "./MysticElevatorModal";
+import { VerticalMoveModal } from "./VerticalMoveModal";
 import { VaultInteractionModal } from "./VaultInteractionModal";
 import { CrisisOverlay } from "./CrisisOverlay";
 import { HauntBriefingModal } from "./HauntBriefingModal";
@@ -98,6 +99,7 @@ export function GameApp() {
       <HauntBriefingModal />
       <CombatModal />
       <MysticElevatorModal />
+      <VerticalMoveModal />
       <VaultInteractionModal />
       <CrisisOverlay />
     </main>

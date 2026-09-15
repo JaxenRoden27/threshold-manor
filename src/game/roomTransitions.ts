@@ -32,7 +32,6 @@ export function getTransitionKind(tile: Tile): RoomTransitionKind | null {
   if (tile.special === "grand-staircase") return "grand-staircase";
   if (tile.special === "upper-landing") return "upper-landing";
   if (tile.special === "coal-chute") return "coal-chute";
-  if (tile.special === "basement-landing") return "basement-stairs";
   return null;
 }
 
@@ -44,8 +43,8 @@ export function getTransitionLabel(kind: RoomTransitionKind): string {
       return "Descend to Grand Staircase (1 AP)";
     case "coal-chute":
       return "Slide down Coal Chute (free)";
-    case "basement-stairs":
-      return "Climb stairs to Foyer (1 AP)";
+    default:
+      return "Use floor transition";
   }
 }
 
@@ -60,8 +59,8 @@ export function getTransitionDestination(
       return currentTile.floorLink ?? { floor: "ground", x: 0, y: 2 };
     case "coal-chute":
       return { floor: "basement", x: 0, y: 0 };
-    case "basement-stairs":
-      return { floor: "ground", x: 0, y: 1 };
+    default:
+      return null;
   }
 }
 

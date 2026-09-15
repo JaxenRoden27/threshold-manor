@@ -1,17 +1,16 @@
-import { createShuffledCardDecks } from "./cardEngine";
+import { createShuffledCardDecks, discardResolvedEvent } from "./cardEngine";
 import { applyTierAction, resolveWinningTier } from "./eventEngine";
 import {
   findOpposingOnTile,
   startCombat,
 } from "./combatEngine";
 import {
-  createShuffledDeck,
   createStarterTiles,
   DIRECTION_DELTA,
-  drawTileForFloor,
   OPPOSITE,
   templateToTile,
 } from "./tileData";
+import { createRoomDeck, drawRoom, getStarterPlacedIds } from "./roomEngine";
 import {
   getTransitionDestination,
   getTransitionKind,
@@ -30,9 +29,19 @@ import {
   canCrossBarrier,
   handleCoalChuteEnter,
   handleCollapsedRoomEnter,
+  handleGalleryEnter,
   isBarrierCrossing,
   withEnteredFrom,
 } from "./specialRooms";
+import {
+  attemptHiddenLatch,
+  dismissHiddenLatch,
+  dismissPortalSelect,
+  executePortalTeleport,
+  executeVerticalMove,
+  maybeTriggerHiddenLatch,
+  onDiscoverTile,
+} from "./verticalTraversal";
 import {
   drawCardForSymbol,
   handleOnTurnEnd,
@@ -118,7 +127,10 @@ export function createInitialState(): GameState {
     log: [],
     puzzle: null,
     selectedPlayerCount: 2,
-    tileDeck: [],
+    roomDeck: [],
+    placedRoomIds: [],
+    drawnCardIds: [],
+    activeGameOmenIds: [],
     cardDecks: createShuffledCardDecks(),
     haunt: null,
     combat: null,
@@ -127,6 +139,10 @@ export function createInitialState(): GameState {
     pendingVaultItems: [],
     pendingVaultLockpick: null,
     pendingElevator: null,
+    verticalDrops: [],
+    passageTokens: [],
+    stairsLink: null,
+    pendingVertical: null,
   });
 }
 
@@ -195,7 +211,10 @@ export function startGame(
     cluesDiscovered: 0,
     threatLevel: 1,
     pendingCard: null,
-    tileDeck: createShuffledDeck(),
+    roomDeck: createRoomDeck(),
+    placedRoomIds: getStarterPlacedIds(),
+    drawnCardIds: [],
+    activeGameOmenIds: [],
     cardDecks: createShuffledCardDecks(),
     haunt: null,
     combat: null,
@@ -204,6 +223,10 @@ export function startGame(
     pendingVaultItems: [],
     pendingVaultLockpick: null,
     pendingElevator: null,
+    verticalDrops: [],
+    passageTokens: [],
+    stairsLink: null,
+    pendingVertical: null,
     log: [
       "You stand in the Entrance Hall. The door seals behind you.",
       "Explore floor by floor. Uncover Omens—but each one risks the Haunt.",
@@ -358,6 +381,9 @@ export function applyHauntRoll(
     cluesDiscovered: omensDrawn,
     threatLevel,
     lastOmenRoomTemplateId: roomTemplateId,
+    activeGameOmenIds: state.activeGameOmenIds.includes(card.id)
+      ? state.activeGameOmenIds
+      : [...state.activeGameOmenIds, card.id],
     pendingCard: {
       ...pending,
       hauntDice: dice,
@@ -441,6 +467,12 @@ export function dismissCard(state: GameState): GameState {
     };
   }
 
+  let cardDecks = state.cardDecks;
+  const pending = state.pendingCard;
+  if (pending?.resolved && pending.card.type === "event") {
+    cardDecks = discardResolvedEvent(cardDecks, pending.card.id);
+  }
+
   const active = getActivePlayer(state);
   const nextIndex = (state.activePlayerIndex + 1) % state.players.length;
   const players = beginTurnForPlayer(state.players, nextIndex);
@@ -448,6 +480,7 @@ export function dismissCard(state: GameState): GameState {
 
   return {
     ...state,
+    cardDecks,
     players,
     pendingCard: null,
     activePlayerIndex: nextIndex,
@@ -480,7 +513,8 @@ export function movePlayer(
     !movablePhases.includes(state.phase) ||
     state.pendingCard ||
     state.combat ||
-    state.pendingElevator
+    state.pendingElevator ||
+    state.pendingVertical
   )
     return state;
 
@@ -506,22 +540,21 @@ export function movePlayer(
   const ny = active.y + dy;
 
   let tiles = [...state.tiles];
-  let tileDeck = state.tileDeck;
+  let nextState: GameState = { ...state };
   let log = [...state.log];
   let pendingCard: PendingCard | null = state.pendingCard;
-  let cardDecks = state.cardDecks;
   let pendingVaultLockpick = state.pendingVaultLockpick;
 
   const existing = getTileAt(tiles, active.floor, nx, ny);
   if (!existing) {
     const requiredDoor = OPPOSITE[direction];
-    const draw = drawTileForFloor(tileDeck, active.floor, requiredDoor);
-    tileDeck = draw.deck;
+    const draw = drawRoom(nextState, active.floor, requiredDoor);
+    nextState = draw.state;
     if (!draw.template) {
       log.push(
         `${active.name} finds a bricked-up doorway to the ${direction}.`
       );
-      return { ...state, log };
+      return { ...nextState, log };
     }
     const newTile = templateToTile(draw.template, active.floor, nx, ny);
     tiles.push(newTile);
@@ -557,11 +590,11 @@ export function movePlayer(
 
     if (symbol !== "none") {
       const drawResult = drawCardForSymbol(
-        { ...state, cardDecks, log },
+        { ...nextState, log },
         symbol,
         targetTile.id
       );
-      cardDecks = drawResult.state.cardDecks;
+      nextState = drawResult.state;
       log = drawResult.state.log;
       if (drawResult.pendingCard) {
         pendingCard = drawResult.pendingCard;
@@ -574,22 +607,30 @@ export function movePlayer(
   }
 
   let next: GameState = {
-    ...state,
+    ...nextState,
     players,
     tiles,
-    tileDeck,
-    cardDecks,
     log,
     pendingCard,
     pendingVaultLockpick,
     viewFloor: active.floor,
   };
 
+  if (isNewDiscovery) {
+    const discovered =
+      next.tiles.find((t) => t.id === targetTile.id) ?? targetTile;
+    next = onDiscoverTile(next, discovered);
+    tiles = next.tiles;
+  }
+
   if (targetTile.special === "coal-chute") {
-    next = handleCoalChuteEnter(next, state.activePlayerIndex);
+    next = handleCoalChuteEnter(next, state.activePlayerIndex, targetTile);
     players = next.players;
   } else if (targetTile.special === "collapsed-room") {
     next = handleCollapsedRoomEnter(next, state.activePlayerIndex, targetTile);
+    players = next.players;
+  } else if (targetTile.special === "gallery") {
+    next = handleGalleryEnter(next, state.activePlayerIndex, targetTile);
     players = next.players;
   } else if (isMysticElevatorTile(targetTile)) {
     const elevatorTile =
@@ -611,12 +652,19 @@ export function movePlayer(
       moved.y
     );
   }
+
+  next = maybeTriggerHiddenLatch(next);
   return next;
 }
 
 export function beginRoomTransition(state: GameState): GameState {
   const movablePhases: Phase[] = ["exploration", "HAUNT_ACTIVE"];
-  if (!movablePhases.includes(state.phase) || state.pendingCard || state.combat)
+  if (
+    !movablePhases.includes(state.phase) ||
+    state.pendingCard ||
+    state.combat ||
+    state.pendingVertical
+  )
     return state;
 
   const active = getActivePlayer(state);
@@ -639,7 +687,8 @@ export function activateElevator(state: GameState): GameState {
     state.pendingCard ||
     state.combat ||
     state.pendingElevator ||
-    state.pendingVaultLockpick
+    state.pendingVaultLockpick ||
+    state.pendingVertical
   )
     return state;
   return activateElevatorFromRoom(state);
@@ -726,7 +775,8 @@ export function endTurn(state: GameState): GameState {
     state.combat ||
     state.pendingTransition ||
     state.pendingVaultLockpick ||
-    state.pendingElevator
+    state.pendingElevator ||
+    state.pendingVertical
   )
     return state;
 
@@ -748,4 +798,43 @@ export function rollStatCheckForCard(state: GameState): { dice: number[]; total:
   if (!pending?.card.stat) return rollBetrayalDice(1);
   const active = getActivePlayer(state);
   return rollBetrayalDice(active[pending.card.stat]);
+}
+
+export function performVerticalMove(state: GameState, optionId: string): GameState {
+  const movablePhases: Phase[] = ["exploration", "HAUNT_ACTIVE"];
+  if (
+    !movablePhases.includes(state.phase) ||
+    state.pendingCard ||
+    state.combat ||
+    state.pendingElevator
+  )
+    return state;
+  return executeVerticalMove(state, optionId);
+}
+
+export function performPortalTeleport(state: GameState, toTokenId: string): GameState {
+  const movablePhases: Phase[] = ["exploration", "HAUNT_ACTIVE"];
+  if (
+    !movablePhases.includes(state.phase) ||
+    state.pendingCard ||
+    state.combat ||
+    state.pendingElevator
+  )
+    return state;
+  return executePortalTeleport(state, toTokenId);
+}
+
+export function performHiddenLatch(state: GameState): GameState {
+  if (state.pendingVertical?.mode !== "hidden-latch") return state;
+  return attemptHiddenLatch(state);
+}
+
+export function dismissVerticalModal(state: GameState): GameState {
+  if (state.pendingVertical?.mode === "hidden-latch") {
+    return dismissHiddenLatch(state);
+  }
+  if (state.pendingVertical?.mode === "portal-select") {
+    return dismissPortalSelect(state);
+  }
+  return state;
 }

@@ -8,8 +8,12 @@ import {
   createInitialState,
   dismissCard,
   dismissVaultLockpick,
+  dismissVerticalModal,
   endTurn,
   movePlayer,
+  performHiddenLatch,
+  performPortalTeleport,
+  performVerticalMove,
   resolveItemCard,
   setPlayerCount,
   setViewFloor,
@@ -45,6 +49,10 @@ interface GameStore extends GameState {
   endTurn: () => void;
   attemptVaultLockpick: () => void;
   dismissVaultLockpick: () => void;
+  performVerticalMove: (optionId: string) => void;
+  performPortalTeleport: (toTokenId: string) => void;
+  performHiddenLatch: () => void;
+  dismissVerticalModal: () => void;
   rotatePuzzleSigil: (index: number) => void;
   dismissHauntBriefing: () => void;
   performHauntAction: (actionId: string) => void;
@@ -99,6 +107,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
   attemptVaultLockpick: () => set((s) => attemptVaultLockpick(s)),
 
   dismissVaultLockpick: () => set((s) => dismissVaultLockpick(s)),
+
+  performVerticalMove: (optionId) =>
+    set((s) => performVerticalMove(s, optionId)),
+
+  performPortalTeleport: (toTokenId) =>
+    set((s) => performPortalTeleport(s, toTokenId)),
+
+  performHiddenLatch: () => set((s) => performHiddenLatch(s)),
+
+  dismissVerticalModal: () => set((s) => dismissVerticalModal(s)),
 
   dismissHauntBriefing: () => set((s) => dismissHauntBriefing(s)),
 

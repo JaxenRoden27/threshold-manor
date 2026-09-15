@@ -116,6 +116,18 @@ function applyHostAction(action: GameAction, fromPeerId: string) {
     case "dismiss-vault":
       useGameStore.getState().dismissVaultLockpick();
       break;
+    case "vertical-move":
+      useGameStore.getState().performVerticalMove(action.optionId);
+      break;
+    case "portal-teleport":
+      useGameStore.getState().performPortalTeleport(action.toTokenId);
+      break;
+    case "attempt-hidden-latch":
+      useGameStore.getState().performHiddenLatch();
+      break;
+    case "dismiss-vertical":
+      useGameStore.getState().dismissVerticalModal();
+      break;
   }
 }
 

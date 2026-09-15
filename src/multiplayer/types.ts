@@ -41,7 +41,11 @@ export type GameAction =
   | { kind: "activate-elevator" }
   | { kind: "complete-elevator"; dice?: number[]; floorPick?: "ground" | "upper" | "basement" }
   | { kind: "attempt-vault-lockpick" }
-  | { kind: "dismiss-vault" };
+  | { kind: "dismiss-vault" }
+  | { kind: "vertical-move"; optionId: string }
+  | { kind: "portal-teleport"; toTokenId: string }
+  | { kind: "attempt-hidden-latch" }
+  | { kind: "dismiss-vertical" };
 
 export type NetMessage =
   | { type: "lobby-update"; lobby: LobbyState }

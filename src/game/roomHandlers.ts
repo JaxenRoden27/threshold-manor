@@ -1,4 +1,4 @@
-import { drawFromDeck } from "./cardEngine";
+import { drawCard } from "./cardEngine";
 import type { CardRollPhase, Floor, GameState, PendingCard, Stat, Tile } from "./types";
 import type { Card } from "./types";
 
@@ -62,30 +62,29 @@ export function attemptVaultLockpick(state: GameState, playerIndex: number): Gam
     };
   }
 
-  let cardDecks = state.cardDecks;
+  let next = state;
   const items: PendingCard[] = [];
   for (let i = 0; i < 2; i++) {
-    const draw = drawFromDeck(cardDecks, "items");
-    cardDecks = draw.decks;
+    const draw = drawCard(next, "items");
+    next = draw.state;
     if (draw.card) {
       items.push(makePendingCard(draw.card, tile.id));
     }
   }
 
-  const tiles = state.tiles.map((t) =>
+  const tiles = next.tiles.map((t) =>
     t.id === tile.id ? { ...t, isLocked: false, cardResolved: true } : t
   );
 
   const firstItem = items[0] ?? null;
 
   return {
-    ...state,
+    ...next,
     tiles,
-    cardDecks,
     pendingCard: firstItem,
     pendingVaultItems: items.slice(1),
     log: [
-      ...state.log,
+      ...next.log,
       `${player.name} picks the vault lock! Two items spill out.`,
     ],
   };
@@ -97,18 +96,22 @@ export function drawCardForSymbol(
   tileId: string
 ): { state: GameState; pendingCard: PendingCard | null } {
   const deckType = symbol === "event" ? "events" : symbol === "item" ? "items" : "omens";
-  const draw = drawFromDeck(state.cardDecks, deckType);
+  const draw = drawCard(state, deckType);
   if (!draw.card) {
-    return { state, pendingCard: null };
+    return { state: draw.state, pendingCard: null };
   }
   const pendingCard = makePendingCard(draw.card, tileId);
-  let log = [...state.log, `A ${symbol} card is drawn: "${draw.card.title}".`];
+  let log = [...draw.state.log, `A ${symbol} card is drawn: "${draw.card.title}".`];
   if (symbol === "omen") {
     log.push("An Omen! A Haunt Roll will follow immediately.");
   }
   log.push(`${state.players[state.activePlayerIndex].name} must resolve the room before moving again.`);
+  const activeGameOmenIds =
+    symbol === "omen"
+      ? [...draw.state.activeGameOmenIds, draw.card.id]
+      : draw.state.activeGameOmenIds;
   return {
-    state: { ...state, cardDecks: draw.decks, log },
+    state: { ...draw.state, log, activeGameOmenIds },
     pendingCard,
   };
 }
