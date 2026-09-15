@@ -49,7 +49,7 @@ jobs:
               type: 'host-create',
               clientId,
               roomCode: code,
-              maxPlayers: 4,
+              maxPlayers: 6,
             }));
           });
           ws.addEventListener('message', (event) => {
