@@ -119,6 +119,16 @@ export function TileRenderer({
         </div>
       )}
 
+      {tile.barrierStat && (
+        <div
+          className="pointer-events-none absolute bottom-1 left-1 z-10 rounded bg-stone-950/70 px-1 text-[7px] text-rose-300"
+          title={`Barrier: ${tile.barrierStat.stat} ${tile.barrierStat.min}+`}
+        >
+          ⛨ {tile.barrierStat.stat.slice(0, 1).toUpperCase()}
+          {tile.barrierStat.min}
+        </div>
+      )}
+
       {/* Player tokens */}
       <div className="pointer-events-none absolute inset-x-0 bottom-1 z-10 flex justify-center gap-0.5">
         {playersHere.map((p, i) => {
