@@ -26,6 +26,13 @@ const DOOR_OFFSETS: Record<Direction, string> = {
 
 const FLOORS: Floor[] = ["ground", "upper", "basement"];
 
+const DIRECTION_KEY_LABEL: Record<Direction, string> = {
+  north: "W",
+  west: "A",
+  south: "S",
+  east: "D",
+};
+
 export function GameBoard() {
   const {
     tiles,
@@ -354,20 +361,23 @@ function DirectionButton({
       t.x === active.x + dx &&
       t.y === active.y + dy
   );
-  const label = direction.charAt(0).toUpperCase();
+  const keyLabel = DIRECTION_KEY_LABEL[direction];
 
   return (
     <Button
       size="sm"
       variant="outline"
-      className="h-10 w-10 border-amber-500 bg-amber-950/60 p-0 text-sm font-bold text-amber-100 shadow-sm hover:bg-amber-900/80"
+      className={`h-10 w-10 border-amber-500 bg-amber-950/60 p-0 text-sm font-bold text-amber-100 shadow-sm hover:bg-amber-900/80 ${
+        unexplored ? "ring-1 ring-amber-400/50" : ""
+      }`}
       onClick={() => onMove(direction)}
       title={
-        unexplored ? `Explore ${direction} (1 AP, then stop)` : `Move ${direction} (1 AP)`
+        unexplored
+          ? `${keyLabel} — explore ${direction} (1 AP, then stop)`
+          : `${keyLabel} — move ${direction} (1 AP)`
       }
     >
-      {label}
-      {unexplored ? "?" : ""}
+      {keyLabel}
     </Button>
   );
 }
