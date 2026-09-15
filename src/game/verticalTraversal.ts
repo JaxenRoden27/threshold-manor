@@ -1,4 +1,5 @@
 import { hasRoomsAvailableForFloor } from "./roomEngine";
+import { playerStat } from "./statEngine";
 import { DIRECTION_DELTA, OPPOSITE, TILE_BY_ID, templateToTile } from "./tileData";
 import type {
   Floor,
@@ -287,7 +288,7 @@ export function maybeTriggerHiddenLatch(state: GameState): GameState {
 
 export function attemptHiddenLatch(state: GameState): GameState {
   const active = state.players[state.activePlayerIndex];
-  if (active.knowledge < LATCH_KNOWLEDGE_MIN) {
+  if (playerStat(active, "knowledge") < LATCH_KNOWLEDGE_MIN) {
     return {
       ...state,
       pendingVertical: null,

@@ -1,5 +1,6 @@
 import { ITEM_DEFINITIONS } from "./cardData";
 import { rollBetrayalDice } from "./diceEngine";
+import { applyStatDelta, isPostHaunt, playerStat } from "./statEngine";
 import type {
   CombatState,
   DamageAllocation,
@@ -124,7 +125,7 @@ export function rollCombatDice(state: GameState): {
   const attacker = state.players.find((p) => p.id === combat.attackerId)!;
   const weapon = getBestCombatItem(attacker, combat.mental);
   const atkDiceCount =
-    attacker[combat.attackStat] + (combat.flankingBonus ?? 0);
+    playerStat(attacker, combat.attackStat) + (combat.flankingBonus ?? 0);
   const { dice: attackerDice } = rollBetrayalDice(atkDiceCount);
   const attackerTotal =
     attackerDice.reduce((s, d) => s + d, 0) + weapon.bonus;
@@ -132,7 +133,8 @@ export function rollCombatDice(state: GameState): {
   let defDiceCount = 0;
   if (combat.defenderType === "player") {
     const defender = state.players.find((p) => p.id === combat.defenderId)!;
-    defDiceCount = defender[combat.defenseStat] + (combat.guardBonus ?? 0);
+    defDiceCount =
+      playerStat(defender, combat.defenseStat) + (combat.guardBonus ?? 0);
   } else if (state.haunt) {
     const monster = getHauntScenario(state.haunt.scenarioId).monster;
     defDiceCount =
@@ -284,15 +286,23 @@ export function applyDamageAllocation(
 
   if (allocated !== damage) return state;
 
+  const postHaunt = isPostHaunt(state.phase, state.haunt);
   const players = state.players.map((p) => {
     if (p.id !== combat.loserId) return p;
-    return {
-      ...p,
-      might: Math.max(0, p.might - (allocation.might ?? 0)),
-      speed: Math.max(0, p.speed - (allocation.speed ?? 0)),
-      sanity: Math.max(0, p.sanity - (allocation.sanity ?? 0)),
-      knowledge: Math.max(0, p.knowledge - (allocation.knowledge ?? 0)),
-    };
+    let next = p;
+    if (allocation.might) {
+      next = applyStatDelta(next, "might", -allocation.might, postHaunt);
+    }
+    if (allocation.speed) {
+      next = applyStatDelta(next, "speed", -allocation.speed, postHaunt);
+    }
+    if (allocation.sanity) {
+      next = applyStatDelta(next, "sanity", -allocation.sanity, postHaunt);
+    }
+    if (allocation.knowledge) {
+      next = applyStatDelta(next, "knowledge", -allocation.knowledge, postHaunt);
+    }
+    return next;
   });
 
   const loser = state.players.find((p) => p.id === combat.loserId);

@@ -58,7 +58,7 @@ export function DamageAllocationModal() {
               <StatAllocator
                 label="Might"
                 value={might}
-                max={loser?.might ?? 0}
+                max={loser?.statTracks.might.currentIndex ?? 0}
                 onChange={setMight}
                 remaining={remaining + might}
                 damage={damage}
@@ -66,7 +66,7 @@ export function DamageAllocationModal() {
               <StatAllocator
                 label="Speed"
                 value={speed}
-                max={loser?.speed ?? 0}
+                max={loser?.statTracks.speed.currentIndex ?? 0}
                 onChange={setSpeed}
                 remaining={remaining + speed}
                 damage={damage}
@@ -77,7 +77,7 @@ export function DamageAllocationModal() {
               <StatAllocator
                 label="Sanity"
                 value={sanity}
-                max={loser?.sanity ?? 0}
+                max={loser?.statTracks.sanity.currentIndex ?? 0}
                 onChange={setSanity}
                 remaining={remaining + sanity}
                 damage={damage}
@@ -85,7 +85,7 @@ export function DamageAllocationModal() {
               <StatAllocator
                 label="Knowledge"
                 value={knowledge}
-                max={loser?.knowledge ?? 0}
+                max={loser?.statTracks.knowledge.currentIndex ?? 0}
                 onChange={setKnowledge}
                 remaining={remaining + knowledge}
                 damage={damage}

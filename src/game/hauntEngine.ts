@@ -1,3 +1,4 @@
+import { playerStat } from "./statEngine";
 import type { GameState, HauntState, Phase, Player, TraitorSelection } from "./types";
 import { getHauntScenario, lookupHauntScenario } from "./hauntMatrix";
 
@@ -15,11 +16,15 @@ function selectTraitor(
   if (players.length === 0) return "";
   switch (method) {
     case "lowest-sanity": {
-      const sorted = [...players].sort((a, b) => a.sanity - b.sanity);
+      const sorted = [...players].sort(
+        (a, b) => playerStat(a, "sanity") - playerStat(b, "sanity")
+      );
       return sorted[0].id;
     }
     case "highest-knowledge": {
-      const sorted = [...players].sort((a, b) => b.knowledge - a.knowledge);
+      const sorted = [...players].sort(
+        (a, b) => playerStat(b, "knowledge") - playerStat(a, "knowledge")
+      );
       return sorted[0].id;
     }
     case "random":
@@ -135,7 +140,7 @@ export function checkHauntVictory(state: GameState): GameState {
   const traitor = state.players.find((p) => p.id === state.haunt!.traitorPlayerId);
   const survivors = state.players.filter((p) => !p.isTraitor);
 
-  if (traitor && (traitor.might <= 0 || traitor.sanity <= 0)) {
+  if (traitor && !traitor.isAlive) {
     return {
       ...state,
       phase: "victory",
@@ -145,7 +150,7 @@ export function checkHauntVictory(state: GameState): GameState {
 
   if (
     survivors.length > 0 &&
-    survivors.every((p) => p.might <= 0 || p.sanity <= 0)
+    survivors.every((p) => !p.isAlive)
   ) {
     return {
       ...state,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { playerStat } from "@/game/statEngine";
 import type { Card, PendingCard, Player } from "@/game/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,7 @@ export function EventCardModal({
 }: EventCardModalProps) {
   const [showDice, setShowDice] = useState(false);
   const stat = card.stat!;
-  const statDiceCount = active ? active[stat] : 1;
+  const statDiceCount = active ? playerStat(active, stat) : 1;
   const resolved = pendingCard.resolved;
   const winningIndex = pendingCard.winningTierIndex;
 

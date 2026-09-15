@@ -1,4 +1,5 @@
 import { drawCard } from "./cardEngine";
+import { applyStatDelta, isPostHaunt, playerStat } from "./statEngine";
 import type { CardRollPhase, Floor, GameState, PendingCard, Stat, Tile } from "./types";
 import type { Card } from "./types";
 
@@ -28,11 +29,11 @@ export function handleOnTurnEnd(state: GameState, playerIndex: number): GameStat
   if (!buffStat) return state;
   if (player.visitedBuffRooms.includes(tile.templateId)) return state;
 
+  const postHaunt = isPostHaunt(state.phase, state.haunt);
   const players = state.players.map((p, i) => {
     if (i !== playerIndex) return p;
     return {
-      ...p,
-      [buffStat]: p[buffStat] + 1,
+      ...applyStatDelta(p, buffStat, 1, postHaunt),
       visitedBuffRooms: [...p.visitedBuffRooms, tile.templateId],
     };
   });
@@ -52,7 +53,7 @@ export function attemptVaultLockpick(state: GameState, playerIndex: number): Gam
   const tile = tileAt(state.tiles, player.floor, player.x, player.y);
   if (!tile || tile.templateId !== "vault" || !tile.isLocked) return state;
 
-  if (player.knowledge < 6) {
+  if (playerStat(player, "knowledge") < 6) {
     return {
       ...state,
       log: [

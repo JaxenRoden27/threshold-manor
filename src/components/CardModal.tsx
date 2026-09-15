@@ -1,5 +1,6 @@
 "use client";
 
+import { playerStat } from "@/game/statEngine";
 import { useGameStore } from "@/store/gameStore";
 import { useGameActions } from "@/hooks/useGameActions";
 import { Button } from "@/components/ui/button";
@@ -44,7 +45,7 @@ export function CardModal() {
   };
 
   const statDiceCount =
-    card.stat && active ? active[card.stat] : 1;
+    card.stat && active ? playerStat(active, card.stat) : 1;
 
   const nextOmenCount = omensDrawn + 1;
   const hasTiers = card.type === "event" && card.tiers && card.tiers.length > 0;

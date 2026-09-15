@@ -47,8 +47,15 @@ import {
   handleOnTurnEnd,
   attemptVaultLockpick as vaultLockpick,
 } from "./roomHandlers";
+import {
+  createPlayerFromTemplateId,
+  nextLivingPlayerIndex,
+  playerStat,
+  applyStatDelta,
+  isPostHaunt,
+} from "./statEngine";
+import { EXPLORER_BY_ID, sortExplorerIdsByAge } from "./characterData";
 import type {
-  CharacterTemplate,
   Direction,
   Floor,
   GameState,
@@ -65,45 +72,6 @@ import {
   checkHauntTrigger,
   rollBetrayalDice,
 } from "./diceEngine";
-
-export const CHARACTER_TEMPLATES: CharacterTemplate[] = [
-  {
-    id: "priest",
-    name: "Sister Mara",
-    title: "Occult Scholar",
-    might: 2,
-    speed: 3,
-    sanity: 4,
-    knowledge: 5,
-  },
-  {
-    id: "athlete",
-    name: "Leo Vance",
-    title: "Ex-Paramedic",
-    might: 5,
-    speed: 4,
-    sanity: 3,
-    knowledge: 2,
-  },
-  {
-    id: "medium",
-    name: "Iris Cole",
-    title: "Reluctant Medium",
-    might: 2,
-    speed: 3,
-    sanity: 5,
-    knowledge: 3,
-  },
-  {
-    id: "detective",
-    name: "Jonah Reed",
-    title: "Private Investigator",
-    might: 3,
-    speed: 4,
-    sanity: 3,
-    knowledge: 4,
-  },
-];
 
 function syncOmenFields<T extends Partial<GameState>>(state: T): T {
   return {
@@ -147,20 +115,26 @@ export function createInitialState(): GameState {
 }
 
 export function setPlayerCount(state: GameState, count: number): GameState {
-  return { ...state, selectedPlayerCount: Math.min(4, Math.max(2, count)) };
+  return { ...state, selectedPlayerCount: Math.min(6, Math.max(2, count)) };
 }
 
 export function startMultiplayerGame(
   members: { peerId: string; characterId: string | null }[]
 ): GameState {
-  const selectedIds = members
-    .map((m) => m.characterId)
-    .filter(Boolean) as string[];
+  const sorted = [...members]
+    .filter((m) => m.characterId)
+    .sort((a, b) => {
+      const ageA = EXPLORER_BY_ID[a.characterId!]?.age ?? 99;
+      const ageB = EXPLORER_BY_ID[b.characterId!]?.age ?? 99;
+      return ageA - ageB;
+    });
+  const selectedIds = sorted.map((m) => m.characterId!) as string[];
   const state = startGame(createInitialState(), selectedIds);
   const players = state.players.map((p, i) => ({
     ...p,
-    id: members[i]?.peerId ?? p.id,
+    id: sorted[i]?.peerId ?? p.id,
   }));
+  const youngest = players[0];
   return {
     ...state,
     players,
@@ -168,7 +142,10 @@ export function startMultiplayerGame(
     log: [
       ...state.log,
       `${members.length} investigators enter Threshold Manor together.`,
-    ],
+      youngest
+        ? `Turn order: youngest first — ${youngest.name} (age ${youngest.age}) opens.`
+        : "",
+    ].filter(Boolean),
   };
 }
 
@@ -176,29 +153,13 @@ export function startGame(
   state: GameState,
   selectedIds: string[]
 ): GameState {
-  const count = Math.min(4, Math.max(2, selectedIds.length));
-  const templates = selectedIds
-    .map((id) => CHARACTER_TEMPLATES.find((c) => c.id === id))
-    .filter(Boolean) as CharacterTemplate[];
-
-  const players: Player[] = templates.slice(0, count).map((t, i) => ({
-    id: `player-${i}`,
-    templateId: t.id,
-    name: t.name,
-    title: t.title,
-    might: t.might,
-    speed: t.speed,
-    sanity: t.sanity,
-    knowledge: t.knowledge,
-    inventory: [],
-    ap: t.speed,
-    floor: "ground" as Floor,
-    x: 0,
-    y: 0,
-    isTraitor: false,
-    guardNextCombat: false,
-    visitedBuffRooms: [],
-  }));
+  const count = Math.min(6, Math.max(2, selectedIds.length));
+  const orderedIds = sortExplorerIdsByAge(selectedIds).slice(0, count);
+  const players: Player[] = orderedIds
+    .map((id, i) =>
+      createPlayerFromTemplateId(id, { id: `player-${i}`, index: i })
+    )
+    .filter(Boolean) as Player[];
 
   return syncOmenFields({
     ...state,
@@ -230,7 +191,10 @@ export function startGame(
     log: [
       "You stand in the Entrance Hall. The door seals behind you.",
       "Explore floor by floor. Uncover Omens—but each one risks the Haunt.",
-    ],
+      players[0]
+        ? `Turn order: youngest first — ${players[0].name} (age ${players[0].age}) opens.`
+        : "",
+    ].filter(Boolean),
     puzzle: null,
   });
 }
@@ -262,19 +226,19 @@ function updatePlayer(
 
 function beginTurnForPlayer(players: Player[], index: number): Player[] {
   return players.map((p, i) =>
-    i === index ? { ...p, ap: p.speed, enteredFrom: undefined } : p
+    i === index
+      ? { ...p, ap: playerStat(p, "speed"), enteredFrom: undefined }
+      : p
   );
 }
 
 function applyStatEffect(
   player: Player,
   stat: Stat,
-  delta: number
+  delta: number,
+  postHaunt: boolean
 ): Player {
-  return {
-    ...player,
-    [stat]: Math.max(0, player[stat] + delta),
-  };
+  return applyStatDelta(player, stat, delta, postHaunt);
 }
 
 function initialRollPhase(card: PendingCard["card"]): PendingCard["rollPhase"] {
@@ -360,9 +324,15 @@ export function applyHauntRoll(
     `Omen uncovered (${omensDrawn} total). Haunt Roll: ${dice.map(betrayalFaceLabel).join(", ")} = ${total}.`,
   ];
 
+  const postHaunt = isPostHaunt(state.phase, state.haunt);
   if (card.omenStatBonus) {
     players = updatePlayer(state.players, state.activePlayerIndex, (p) =>
-      applyStatEffect(p, card.omenStatBonus!.stat, card.omenStatBonus!.delta)
+      applyStatEffect(
+        p,
+        card.omenStatBonus!.stat,
+        card.omenStatBonus!.delta,
+        postHaunt
+      )
     );
   }
 
@@ -432,9 +402,10 @@ export function resolveItemCard(
     }));
   }
   const effect = card.onSuccess ?? card.successEffect;
+  const postHaunt = isPostHaunt(state.phase, state.haunt);
   if (effect) {
     players = updatePlayer(players, state.activePlayerIndex, (p) =>
-      applyStatEffect(p, effect.stat, effect.delta)
+      applyStatEffect(p, effect.stat, effect.delta, postHaunt)
     );
   }
   log.push(card.successText);
@@ -474,8 +445,9 @@ export function dismissCard(state: GameState): GameState {
   }
 
   const active = getActivePlayer(state);
-  const nextIndex = (state.activePlayerIndex + 1) % state.players.length;
-  const players = beginTurnForPlayer(state.players, nextIndex);
+  let players = state.players;
+  const nextIndex = nextLivingPlayerIndex(players, state.activePlayerIndex);
+  players = beginTurnForPlayer(players, nextIndex);
   const next = players[nextIndex];
 
   return {
@@ -519,7 +491,7 @@ export function movePlayer(
     return state;
 
   const active = getActivePlayer(state);
-  if (active.ap <= 0) return state;
+  if (!active.isAlive || active.ap <= 0) return state;
 
   const currentTile = getTileAt(state.tiles, active.floor, active.x, active.y);
   if (!currentTile || !currentTile.doors[direction]) return state;
@@ -781,7 +753,10 @@ export function endTurn(state: GameState): GameState {
     return state;
 
   let next = handleOnTurnEnd(state, state.activePlayerIndex);
-  const nextIndex = (next.activePlayerIndex + 1) % next.players.length;
+  const nextIndex = nextLivingPlayerIndex(
+    next.players,
+    next.activePlayerIndex
+  );
   const players = beginTurnForPlayer(next.players, nextIndex);
   const activePlayer = players[nextIndex];
   return {
@@ -797,7 +772,7 @@ export function rollStatCheckForCard(state: GameState): { dice: number[]; total:
   const pending = state.pendingCard;
   if (!pending?.card.stat) return rollBetrayalDice(1);
   const active = getActivePlayer(state);
-  return rollBetrayalDice(active[pending.card.stat]);
+  return rollBetrayalDice(playerStat(active, pending.card.stat));
 }
 
 export function performVerticalMove(state: GameState, optionId: string): GameState {

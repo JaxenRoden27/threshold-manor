@@ -54,7 +54,7 @@ export class MultiplayerSession {
     return this.lobby;
   }
 
-  async createRoom(maxPlayers = 4): Promise<string> {
+  async createRoom(maxPlayers = 6): Promise<string> {
     this.isHost = true;
     this.callbacks.onStatus("connecting");
 
@@ -107,7 +107,7 @@ export class MultiplayerSession {
       type: "host-create",
       clientId: this.clientId,
       roomCode: this.roomCode,
-      maxPlayers: this.lobby?.maxPlayers ?? 4,
+      maxPlayers: this.lobby?.maxPlayers ?? 6,
     })
       .then(() => {
         this.callbacks.onStatus("connected");

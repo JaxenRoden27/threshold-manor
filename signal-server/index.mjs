@@ -72,7 +72,7 @@ function handleHostCreate(roomCode, msg, socket) {
   }
 
   let room = getRoom(roomCode);
-  const maxPlayers = msg.maxPlayers ?? 4;
+  const maxPlayers = msg.maxPlayers ?? 6;
 
   if (room?.meta.lobby.started && room.meta.hostClientId !== msg.clientId) {
     sendError(socket, "This game has already started.");

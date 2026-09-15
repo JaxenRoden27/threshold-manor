@@ -1,3 +1,4 @@
+import { applyStatDelta, isPostHaunt } from "./statEngine";
 import type {
   EventTier,
   EventTierAction,
@@ -28,12 +29,11 @@ function updatePlayerStat(
   players: Player[],
   playerIndex: number,
   stat: Stat,
-  delta: number
+  delta: number,
+  postHaunt: boolean
 ): Player[] {
   return players.map((p, i) =>
-    i === playerIndex
-      ? { ...p, [stat]: Math.max(0, p[stat] + delta) }
-      : p
+    i === playerIndex ? applyStatDelta(p, stat, delta, postHaunt) : p
   );
 }
 
@@ -48,8 +48,15 @@ export function applyTierAction(
   const player = players[playerIndex];
   let message = action.message ?? "";
 
+  const postHaunt = isPostHaunt(state.phase, state.haunt);
   if (action.stat !== undefined && action.delta !== undefined) {
-    players = updatePlayerStat(players, playerIndex, action.stat, action.delta);
+    players = updatePlayerStat(
+      players,
+      playerIndex,
+      action.stat,
+      action.delta,
+      postHaunt
+    );
     message =
       message ||
       `${player.name}'s ${action.stat} ${action.delta >= 0 ? "+" : ""}${action.delta}.`;

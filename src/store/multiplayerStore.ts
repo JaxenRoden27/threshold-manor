@@ -24,7 +24,7 @@ interface MultiplayerStore {
   statusMessage: string | null;
   lobby: LobbyState | null;
   setMode: (mode: PlayMode) => void;
-  createRoom: () => Promise<string | null>;
+  createRoom: (maxPlayers?: number) => Promise<string | null>;
   joinRoom: (code: string) => Promise<boolean>;
   selectCharacter: (characterId: string | null) => void;
   setReady: (ready: boolean) => void;
@@ -180,11 +180,11 @@ export const useMultiplayerStore = create<MultiplayerStore>((set, get) => ({
 
   setMode: (mode) => set({ mode }),
 
-  createRoom: async () => {
+  createRoom: async (maxPlayers = 6) => {
     ensureSession();
     set({ mode: "multiplayer", status: "connecting", statusMessage: null });
     try {
-      const code = await session!.createRoom(4);
+      const code = await session!.createRoom(maxPlayers);
       const lobby = session!.getLobby();
       set({
         roomCode: code,

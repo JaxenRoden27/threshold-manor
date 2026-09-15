@@ -1,6 +1,7 @@
 "use client";
 
 import { getHauntScenario } from "@/game/hauntMatrix";
+import { playerStat } from "@/game/statEngine";
 import { useGameStore } from "@/store/gameStore";
 import { useGameActions } from "@/hooks/useGameActions";
 import { useMultiplayerStore } from "@/store/multiplayerStore";
@@ -31,7 +32,7 @@ export function HauntActionsPanel() {
     if (action.survivorOnly && viewingAsTraitor) return false;
     if (action.traitorOnly && !viewingAsTraitor) return false;
     if (haunt.completedActionIds.includes(action.id)) return false;
-    if (!active || active[action.stat] < action.minStat) return false;
+    if (!active || playerStat(active, action.stat) < action.minStat) return false;
     if (active.ap < action.apCost) return false;
     return true;
   });

@@ -1,5 +1,6 @@
 "use client";
 
+import { playerStat } from "@/game/statEngine";
 import { useGameStore } from "@/store/gameStore";
 import { useGameActions } from "@/hooks/useGameActions";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,8 @@ export function VaultInteractionModal() {
   if (!pendingVaultLockpick) return null;
 
   const active = players[activePlayerIndex];
-  const canPick = (active?.knowledge ?? 0) >= 6;
+  const knowledge = active ? playerStat(active, "knowledge") : 0;
+  const canPick = knowledge >= 6;
 
   return (
     <Dialog open onOpenChange={() => dismissVaultLockpick()}>
@@ -33,7 +35,7 @@ export function VaultInteractionModal() {
         </DialogHeader>
 
         <p className="text-sm text-stone-300">
-          {active?.name}&apos;s Knowledge: {active?.knowledge ?? 0}
+          {active?.name}&apos;s Knowledge: {knowledge}
           {!canPick && (
             <span className="mt-1 block text-rose-400">
               You lack the skill to pick this lock.

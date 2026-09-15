@@ -3,8 +3,9 @@
 import { useGameStore } from "@/store/gameStore";
 import { useGameActions } from "@/hooks/useGameActions";
 import { useMultiplayerStore } from "@/store/multiplayerStore";
+import { PlayerCharacterCard } from "@/components/CharacterCardUI";
+import { TurnTrackerHUD } from "@/components/TurnTrackerHUD";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -13,7 +14,6 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 
 export function GameSidebar() {
   const {
@@ -34,6 +34,11 @@ export function GameSidebar() {
 
   const active = players[activePlayerIndex];
   const isMyActiveTurn = mode === "local" || isMyTurn();
+  const canPassTurn =
+    (phase === "exploration" || phase === "HAUNT_ACTIVE") &&
+    !pendingCard &&
+    !combat &&
+    canAct();
 
   return (
     <aside className="flex h-full flex-col gap-3">
@@ -71,62 +76,21 @@ export function GameSidebar() {
         </CardContent>
       </Card>
 
-      {active && (
-        <Card className="border-stone-700 bg-stone-900/80">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base text-amber-100">
-              {active.name}
-            </CardTitle>
-            <p className="text-xs text-stone-400">{active.title}</p>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="flex justify-between font-medium text-amber-200">
-              <span>Action Points</span>
-              <span>{active.ap} / {active.speed}</span>
-            </div>
-            <Separator className="bg-stone-700" />
-            <div className="grid grid-cols-2 gap-2 text-stone-300">
-              <span>Might {active.might}</span>
-              <span>Speed {active.speed}</span>
-              <span>Sanity {active.sanity}</span>
-              <span>Knowledge {active.knowledge}</span>
-            </div>
-            {active.inventory.length > 0 && (
-              <>
-                <Separator className="bg-stone-700" />
-                <div>
-                  <p className="mb-1 text-xs text-stone-500">Inventory</p>
-                  <ul className="space-y-1 text-xs text-stone-300">
-                    {active.inventory.map((item) => (
-                      <li key={item}>• {item}</li>
-                    ))}
-                  </ul>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      <Card className="flex min-h-0 flex-1 flex-col border-stone-700 bg-stone-900/80">
+      <Card className="border-stone-700 bg-stone-900/80">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base text-amber-100">Party</CardTitle>
+          <CardTitle className="text-base text-amber-100">Turn Order</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-xs">
-          {players.map((p, i) => (
-            <div
-              key={p.id}
-              className={`rounded px-2 py-1 ${
-                i === activePlayerIndex
-                  ? "bg-amber-900/40 text-amber-100"
-                  : "text-stone-400"
-              }`}
-            >
-              {p.name} — AP {p.ap} · {p.floor}
-            </div>
-          ))}
+        <CardContent>
+          <TurnTrackerHUD
+            players={players}
+            activePlayerIndex={activePlayerIndex}
+            onPassTurn={endTurn}
+            canPassTurn={canPassTurn}
+          />
         </CardContent>
       </Card>
+
+      {active && <PlayerCharacterCard player={active} compact />}
 
       {mode === "multiplayer" && localPeerId && (
         <p className="text-center text-xs text-stone-500">
@@ -145,20 +109,6 @@ export function GameSidebar() {
             {haunt.completedActionIds.length} haunt action(s) completed.
           </CardContent>
         </Card>
-      )}
-
-      {(phase === "exploration" || phase === "HAUNT_ACTIVE") &&
-        !pendingCard &&
-        !combat && (
-        <Button
-          variant="outline"
-          onClick={endTurn}
-          className="w-full"
-          disabled={!canAct()}
-        >
-          End Turn
-          {active?.ap === 0 ? " (Space)" : ""}
-        </Button>
       )}
 
       <Card className="min-h-[120px] flex-1 border-stone-700 bg-stone-900/80">

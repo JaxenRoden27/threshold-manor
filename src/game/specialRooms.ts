@@ -1,4 +1,5 @@
 import { OPPOSITE } from "./tileData";
+import { playerStat } from "./statEngine";
 import { registerVerticalDrop } from "./verticalTraversal";
 import type { Direction, Floor, GameState, Player, Stat, Tile } from "./types";
 
@@ -107,7 +108,7 @@ export function handleCollapsedRoomEnter(
   tile: Tile
 ): GameState {
   const player = state.players[playerIndex];
-  if (player.speed >= 4) {
+  if (playerStat(player, "speed") >= 4) {
     return {
       ...state,
       log: [
@@ -197,12 +198,12 @@ export function canCrossBarrier(player: Player, tile: Tile): boolean {
   if (!tile.barrierStat) return true;
   const stat = tile.barrierStat.stat;
   const min = tile.barrierStat.min;
-  return player[stat] >= min;
+  return playerStat(player, stat) >= min;
 }
 
 export function barrierFailMessage(player: Player, tile: Tile): string {
   const { stat, min } = tile.barrierStat!;
-  return `${player.name} cannot cross the ${tile.name} (${stat} ${min}+ required, has ${player[stat]}).`;
+  return `${player.name} cannot cross the ${tile.name} (${stat} ${min}+ required, has ${playerStat(player, stat)}).`;
 }
 
 export function withEnteredFrom(

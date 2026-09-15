@@ -1,4 +1,26 @@
 export type Stat = "might" | "speed" | "sanity" | "knowledge";
+export type ExplorerColor =
+  | "red"
+  | "green"
+  | "yellow"
+  | "blue"
+  | "purple"
+  | "white";
+
+export interface StatTrack {
+  values: readonly [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  startIndex: number;
+  currentIndex: number;
+}
 export type Phase =
   | "setup"
   | "exploration"
@@ -83,6 +105,7 @@ export interface StairsLink {
   foyer: { floor: Floor; x: number; y: number };
 }
 
+/** @deprecated Use ExplorerTemplate from characterData */
 export interface CharacterTemplate {
   id: string;
   name: string;
@@ -97,17 +120,16 @@ export interface Player {
   id: string;
   templateId: string;
   name: string;
-  title: string;
-  might: number;
-  speed: number;
-  sanity: number;
-  knowledge: number;
+  age: number;
+  color: ExplorerColor;
+  statTracks: Record<Stat, StatTrack>;
   inventory: string[];
   ap: number;
   floor: Floor;
   x: number;
   y: number;
   isTraitor: boolean;
+  isAlive: boolean;
   guardNextCombat: boolean;
   visitedBuffRooms: string[];
   /** Direction player moved from when entering current tile */

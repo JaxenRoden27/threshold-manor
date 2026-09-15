@@ -124,7 +124,7 @@ export class ThresholdManorRoom implements DurableObject {
     msg: Extract<ClientMessage, { type: "host-create" }>,
     socket: WebSocket
   ) {
-    const maxPlayers = msg.maxPlayers ?? 4;
+    const maxPlayers = msg.maxPlayers ?? 6;
     const roomCode = normalizeRoomCode(msg.roomCode);
     if (!isValidRoomCode(roomCode)) {
       this.sendError(socket, "Invalid room code.");

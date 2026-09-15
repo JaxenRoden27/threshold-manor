@@ -32,6 +32,7 @@ import {
   startCombat,
 } from "@/game/combatEngine";
 import { rotateSigil, isPuzzleFailed } from "@/game/puzzleEngine";
+import { playerStat } from "@/game/statEngine";
 import type { DamageAllocation, Direction, Floor, GameState, Phase } from "@/game/types";
 
 interface GameStore extends GameState {
@@ -162,7 +163,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     } else if (players[s.activePlayerIndex].ap <= 0) {
       const nextIndex = (s.activePlayerIndex + 1) % s.players.length;
       const refreshed = players.map((p, i) =>
-        i === nextIndex ? { ...p, ap: p.speed } : p
+        i === nextIndex ? { ...p, ap: playerStat(p, "speed") } : p
       );
       log.push(`${refreshed[nextIndex].name} steps up to the sigils.`);
       set({
